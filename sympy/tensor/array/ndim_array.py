@@ -1,9 +1,12 @@
 from __future__ import print_function, division
 
 from sympy import Basic
+from sympy.core.expr import Expr
+from sympy.core.numbers import Integer
+from sympy.core.sympify import sympify
 from sympy.core.compatibility import SYMPY_INTS, Iterable
-import itertools
 
+import itertools
 
 class NDimArray(object):
     """
@@ -243,8 +246,11 @@ class NDimArray(object):
         return Basic._eval_derivative_n_times(self, s, n)
 
     def _eval_derivative(self, arg):
+        return self.applyfunc(lambda x: x.diff(arg))
+
+    def _eval_derivative_array(self, arg):
         from sympy import derive_by_array
-        from sympy import Derivative, Tuple
+        from sympy import Tuple
         from sympy.matrices.common import MatrixCommon
         if isinstance(arg, (Iterable, Tuple, MatrixCommon, NDimArray)):
             return derive_by_array(self, arg)
@@ -307,9 +313,8 @@ class NDimArray(object):
         SymPy objects, like lists and dictionaries of expressions.
         """
         from sympy.printing.latex import latex
-        s = latex(self, mode='equation*')
-        s = s.strip('$')
-        return "$$%s$$" % s
+        s = latex(self, mode='plain')
+        return "$\\displaystyle %s$" % s
 
     _repr_latex_orig = _repr_latex_
 
@@ -484,9 +489,3 @@ class ImmutableNDimArray(NDimArray, Basic):
 
     def as_mutable(self):
         raise NotImplementedError("abstract method")
-
-
-from sympy.core.numbers import Integer
-from sympy.core.sympify import sympify
-from sympy.core.function import Derivative
-from sympy.core.expr import Expr

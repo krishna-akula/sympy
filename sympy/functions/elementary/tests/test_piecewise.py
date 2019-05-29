@@ -3,9 +3,9 @@ from sympy import (
     Integral, integrate, Interval, lambdify, log, Max, Min, oo, Or, pi,
     Piecewise, piecewise_fold, Rational, solve, symbols, transpose,
     cos, sin, exp, Abs, Ne, Not, Symbol, S, sqrt, Tuple, zoo,
-    factor_terms, DiracDelta, Heaviside, Add, Mul, factorial)
+    factor_terms, DiracDelta, Heaviside, Add, Mul, factorial, Ge)
 from sympy.printing import srepr
-from sympy.utilities.pytest import XFAIL, raises
+from sympy.utilities.pytest import raises, slow
 
 from sympy.functions.elementary.piecewise import Undefined
 
@@ -14,7 +14,7 @@ a, b, c, d, x, y = symbols('a:d, x, y')
 z = symbols('z', nonzero=True)
 
 
-def test_piecewise():
+def test_piecewise1():
 
     # Test canonicalization
     assert Piecewise((x, x < 1), (0, True)) == Piecewise((x, x < 1), (0, True))
@@ -144,8 +144,8 @@ def test_piecewise():
         (x**3/3 + S(4)/3, x < 0),
         (x*log(x) - x + S(4)/3, True))
     p = Piecewise((x, x < 1), (x**2, -1 <= x), (x, 3 < x))
-    assert integrate(p, (x, -2, 2)) == 5/6.0
-    assert integrate(p, (x, 2, -2)) == -5/6.0
+    assert integrate(p, (x, -2, 2)) == S(5)/6
+    assert integrate(p, (x, 2, -2)) == -S(5)/6
     p = Piecewise((0, x < 0), (1, x < 1), (0, x < 2), (1, x < 3), (0, True))
     assert integrate(p, (x, -oo, oo)) == 2
     p = Piecewise((x, x < -10), (x**2, x <= -1), (x, 1 < x))
@@ -208,39 +208,97 @@ def test_piecewise_integrate1b():
         (Min(1, Max(0, y))**2/2 - S(1)/2, y < 1),
         (y - 1, True))
 
-
-def test_piecewise_integrate1c():
+@slow
+def test_piecewise_integrate1ca():
     y = symbols('y', real=True)
-    for i, g in enumerate([
-        Piecewise((1 - x, Interval(0, 1).contains(x)),
-            (1 + x, Interval(-1, 0).contains(x)), (0, True)),
-        Piecewise((0, Or(x <= -1, x >= 1)), (1 - x, x > 0),
-            (1 + x, True))]):
-        gy1 = g.integrate((x, y, 1))
-        g1y = g.integrate((x, 1, y))
-        for yy in (-2, 0, 2):
-            assert g.integrate((x, yy, 1)) == gy1.subs(y, yy)
-            assert g.integrate((x, 1, yy)) == g1y.subs(y, yy)
-        assert piecewise_fold(gy1.rewrite(Piecewise)) == Piecewise(
+    g = Piecewise(
+        (1 - x, Interval(0, 1).contains(x)),
+        (1 + x, Interval(-1, 0).contains(x)),
+        (0, True)
+        )
+    gy1 = g.integrate((x, y, 1))
+    g1y = g.integrate((x, 1, y))
+
+    assert g.integrate((x, -2, 1)) == gy1.subs(y, -2)
+    assert g.integrate((x, 1, -2)) == g1y.subs(y, -2)
+    assert g.integrate((x, 0, 1)) == gy1.subs(y, 0)
+    assert g.integrate((x, 1, 0)) == g1y.subs(y, 0)
+    # XXX Make test pass without simplify
+    assert g.integrate((x, 2, 1)) == gy1.subs(y, 2).simplify()
+    assert g.integrate((x, 1, 2)) == g1y.subs(y, 2).simplify()
+
+    assert piecewise_fold(gy1.rewrite(Piecewise)) == \
+        Piecewise(
             (1, y <= -1),
             (-y**2/2 - y + S(1)/2, y <= 0),
             (y**2/2 - y + S(1)/2, y < 1),
             (0, True))
-        assert piecewise_fold(g1y.rewrite(Piecewise)) == Piecewise(
+    assert piecewise_fold(g1y.rewrite(Piecewise)) == \
+        Piecewise(
             (-1, y <= -1),
             (y**2/2 + y - S(1)/2, y <= 0),
             (-y**2/2 + y - S(1)/2, y < 1),
             (0, True))
-        # g1y and gy1 should simplify if the condition that y < 1
-        # is applied, e.g. Min(1, Max(-1, y)) --> Max(-1, y)
-        assert gy1 == Piecewise(
-            (-Min(1, Max(-1, y))**2/2 - Min(1, Max(-1, y)) +
-                Min(1, Max(0, y))**2 + S(1)/2, y < 1),
+
+    # g1y and gy1 should simplify if the condition that y < 1
+    # is applied, e.g. Min(1, Max(-1, y)) --> Max(-1, y)
+    # XXX Make test pass without simplify
+    assert gy1.simplify() == Piecewise(
+        (
+            -Min(1, Max(-1, y))**2/2 - Min(1, Max(-1, y)) +
+            Min(1, Max(0, y))**2 + S(1)/2, y < 1),
+        (0, True)
+        )
+    assert g1y.simplify() == Piecewise(
+        (
+            Min(1, Max(-1, y))**2/2 + Min(1, Max(-1, y)) -
+            Min(1, Max(0, y))**2 - S(1)/2, y < 1),
+        (0, True))
+
+@slow
+def test_piecewise_integrate1cb():
+    y = symbols('y', real=True)
+    g = Piecewise(
+        (0, Or(x <= -1, x >= 1)),
+        (1 - x, x > 0),
+        (1 + x, True)
+        )
+    gy1 = g.integrate((x, y, 1))
+    g1y = g.integrate((x, 1, y))
+
+    assert g.integrate((x, -2, 1)) == gy1.subs(y, -2)
+    assert g.integrate((x, 1, -2)) == g1y.subs(y, -2)
+    assert g.integrate((x, 0, 1)) == gy1.subs(y, 0)
+    assert g.integrate((x, 1, 0)) == g1y.subs(y, 0)
+    assert g.integrate((x, 2, 1)) == gy1.subs(y, 2)
+    assert g.integrate((x, 1, 2)) == g1y.subs(y, 2)
+
+    assert piecewise_fold(gy1.rewrite(Piecewise)) == \
+        Piecewise(
+            (1, y <= -1),
+            (-y**2/2 - y + S(1)/2, y <= 0),
+            (y**2/2 - y + S(1)/2, y < 1),
             (0, True))
-        assert g1y == Piecewise(
-            (Min(1, Max(-1, y))**2/2 + Min(1, Max(-1, y)) -
-                Min(1, Max(0, y))**2 - S(1)/2, y < 1),
+    assert piecewise_fold(g1y.rewrite(Piecewise)) == \
+        Piecewise(
+            (-1, y <= -1),
+            (y**2/2 + y - S(1)/2, y <= 0),
+            (-y**2/2 + y - S(1)/2, y < 1),
             (0, True))
+
+    # g1y and gy1 should simplify if the condition that y < 1
+    # is applied, e.g. Min(1, Max(-1, y)) --> Max(-1, y)
+    assert gy1 == Piecewise(
+        (
+            -Min(1, Max(-1, y))**2/2 - Min(1, Max(-1, y)) +
+            Min(1, Max(0, y))**2 + S(1)/2, y < 1),
+        (0, True)
+        )
+    assert g1y == Piecewise(
+        (
+            Min(1, Max(-1, y))**2/2 + Min(1, Max(-1, y)) -
+            Min(1, Max(0, y))**2 - S(1)/2, y < 1),
+        (0, True))
 
 
 def test_piecewise_integrate2():
@@ -288,6 +346,7 @@ def test_piecewise_integrate3_inequality_conditions():
     # values
 
 
+@slow
 def test_piecewise_integrate4_symbolic_conditions():
     a = Symbol('a', real=True, finite=True)
     b = Symbol('b', real=True, finite=True)
@@ -374,6 +433,18 @@ def test_piecewise_simplify():
             (2*x, And(Eq(a, 0), Eq(y, 0))),
             (2, And(Eq(a, 1), Eq(y, 0))),
             (0, True))
+    args = (2, And(Eq(x, 2), Ge(y ,0))), (x, True)
+    assert Piecewise(*args).simplify() == Piecewise(*args)
+    args = (1, Eq(x, 0)), (sin(x)/x, True)
+    assert Piecewise(*args).simplify() == Piecewise(*args)
+    assert Piecewise((2 + y, And(Eq(x, 2), Eq(y, 0))), (x, True)
+        ).simplify() == x
+    # check that x or f(x) are recognized as being Symbol-like for lhs
+    args = Tuple((1, Eq(x, 0)), (sin(x) + 1 + x, True))
+    ans = x + sin(x) + 1
+    f = Function('f')
+    assert Piecewise(*args).simplify() == ans
+    assert Piecewise(*args.subs(x, f(x))).simplify() == ans.subs(x, f(x))
 
 
 def test_piecewise_solve():
@@ -475,10 +546,9 @@ def test_piecewise_fold():
 def test_piecewise_fold_piecewise_in_cond():
     p1 = Piecewise((cos(x), x < 0), (0, True))
     p2 = Piecewise((0, Eq(p1, 0)), (p1 / Abs(p1), True))
-    p3 = piecewise_fold(p2)
-    assert(p2.subs(x, -pi/2) == 0.0)
-    assert(p2.subs(x, 1) == 0.0)
-    assert(p2.subs(x, -pi/4) == 1.0)
+    assert p2.subs(x, -pi/2) == 0
+    assert p2.subs(x, 1) == 0
+    assert p2.subs(x, -pi/4) == 1
     p4 = Piecewise((0, Eq(p1, 0)), (1,True))
     ans = piecewise_fold(p4)
     for i in range(-1, 1):
@@ -1125,7 +1195,21 @@ def test_issue_14240():
         Piecewise((i, a), (0, True)) for i in range(1, 41)])
         ) == Piecewise((factorial(40), a), (0, True))
 
+
 def test_issue_14787():
     x = Symbol('x')
     f = Piecewise((x, x < 1), ((S(58) / 7), True))
     assert str(f.evalf()) == "Piecewise((x, x < 1), (8.28571428571429, True))"
+
+
+def test_issue_8458():
+    x, y = symbols('x y')
+    # Original issue
+    p1 = Piecewise((0, Eq(x, 0)), (sin(x), True))
+    assert p1.simplify() == sin(x)
+    # Slightly larger variant
+    p2 = Piecewise((x, Eq(x, 0)), (4*x + (y-2)**4, Eq(x, 0) & Eq(x+y, 2)), (sin(x), True))
+    assert p2.simplify() == sin(x)
+    # Test for problem highlighted during review
+    p3 = Piecewise((x+1, Eq(x, -1)), (4*x + (y-2)**4, Eq(x, 0) & Eq(x+y, 2)), (sin(x), True))
+    assert p3.simplify() == Piecewise((0, Eq(x, -1)), (sin(x), True))

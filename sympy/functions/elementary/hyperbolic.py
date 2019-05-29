@@ -3,16 +3,15 @@ from __future__ import print_function, division
 from sympy.core import S, sympify, cacheit
 from sympy.core.add import Add
 from sympy.core.function import Function, ArgumentIndexError, _coeff_isneg
-
+from sympy.functions.combinatorial.factorials import factorial, RisingFactorial
+from sympy.functions.elementary.exponential import exp, log
 from sympy.functions.elementary.miscellaneous import sqrt
 
-from sympy.functions.elementary.exponential import exp, log
-from sympy.functions.combinatorial.factorials import factorial, RisingFactorial
 
 def _rewrite_hyperbolics_as_exp(expr):
     expr = sympify(expr)
-    return expr.xreplace(dict([(h, h.rewrite(exp))
-        for h in expr.atoms(HyperbolicFunction)]))
+    return expr.xreplace({h: h.rewrite(exp)
+        for h in expr.atoms(HyperbolicFunction)})
 
 
 ###############################################################################
@@ -167,7 +166,7 @@ class sinh(HyperbolicFunction):
         Returns this function as a complex coordinate.
         """
         from sympy import cos, sin
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             if deep:
                 hints['complex'] = False
                 return (self.expand(deep, **hints), S.Zero)
@@ -226,16 +225,16 @@ class sinh(HyperbolicFunction):
         else:
             return self.func(arg)
 
-    def _eval_is_real(self):
-        if self.args[0].is_real:
+    def _eval_is_extended_real(self):
+        if self.args[0].is_extended_real:
             return True
 
     def _eval_is_positive(self):
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             return self.args[0].is_positive
 
     def _eval_is_negative(self):
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             return self.args[0].is_negative
 
     def _eval_is_finite(self):
@@ -327,7 +326,7 @@ class cosh(HyperbolicFunction):
 
     def as_real_imag(self, deep=True, **hints):
         from sympy import cos, sin
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             if deep:
                 hints['complex'] = False
                 return (self.expand(deep, **hints), S.Zero)
@@ -388,7 +387,7 @@ class cosh(HyperbolicFunction):
             return self.func(arg)
 
     def _eval_is_positive(self):
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             return True
 
     def _eval_is_finite(self):
@@ -495,7 +494,7 @@ class tanh(HyperbolicFunction):
 
     def as_real_imag(self, deep=True, **hints):
         from sympy import cos, sin
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             if deep:
                 hints['complex'] = False
                 return (self.expand(deep, **hints), S.Zero)
@@ -534,21 +533,21 @@ class tanh(HyperbolicFunction):
         else:
             return self.func(arg)
 
-    def _eval_is_real(self):
-        if self.args[0].is_real:
+    def _eval_is_extended_real(self):
+        if self.args[0].is_extended_real:
             return True
 
     def _eval_is_positive(self):
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             return self.args[0].is_positive
 
     def _eval_is_negative(self):
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             return self.args[0].is_negative
 
     def _eval_is_finite(self):
         arg = self.args[0]
-        if arg.is_real:
+        if arg.is_extended_real:
             return True
 
 
@@ -645,7 +644,7 @@ class coth(HyperbolicFunction):
 
     def as_real_imag(self, deep=True, **hints):
         from sympy import cos, sin
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             if deep:
                 hints['complex'] = False
                 return (self.expand(deep, **hints), S.Zero)
@@ -676,11 +675,11 @@ class coth(HyperbolicFunction):
         return 1/tanh(arg)
 
     def _eval_is_positive(self):
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             return self.args[0].is_positive
 
     def _eval_is_negative(self):
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             return self.args[0].is_negative
 
     def _eval_as_leading_term(self, x):
@@ -712,7 +711,7 @@ class ReciprocalHyperbolicFunction(HyperbolicFunction):
         t = cls._reciprocal_of.eval(arg)
         if hasattr(arg, 'inverse') and arg.inverse() == cls:
             return arg.args[0]
-        return 1/t if t != None else t
+        return 1/t if t is not None else t
 
     def _call_reciprocal(self, method_name, *args, **kwargs):
         # Calls method_name on _reciprocal_of
@@ -723,13 +722,13 @@ class ReciprocalHyperbolicFunction(HyperbolicFunction):
         # If calling method_name on _reciprocal_of returns a value != None
         # then return the reciprocal of that value
         t = self._call_reciprocal(method_name, *args, **kwargs)
-        return 1/t if t != None else t
+        return 1/t if t is not None else t
 
     def _rewrite_reciprocal(self, method_name, arg):
         # Special handling for rewrite functions. If reciprocal rewrite returns
         # unmodified expression, then return None
         t = self._call_reciprocal(method_name, arg)
-        if t != None and t != self._reciprocal_of(arg):
+        if t is not None and t != self._reciprocal_of(arg):
             return 1/t
 
     def _eval_rewrite_as_exp(self, arg, **kwargs):
@@ -757,8 +756,8 @@ class ReciprocalHyperbolicFunction(HyperbolicFunction):
     def _eval_as_leading_term(self, x):
         return (1/self._reciprocal_of(self.args[0]))._eval_as_leading_term(x)
 
-    def _eval_is_real(self):
-        return self._reciprocal_of(self.args[0]).is_real
+    def _eval_is_extended_real(self):
+        return self._reciprocal_of(self.args[0]).is_extended_real
 
     def _eval_is_finite(self):
         return (1/self._reciprocal_of(self.args[0])).is_finite
@@ -811,11 +810,11 @@ class csch(ReciprocalHyperbolicFunction):
         return S.ImaginaryUnit / cosh(arg + S.ImaginaryUnit * S.Pi / 2)
 
     def _eval_is_positive(self):
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             return self.args[0].is_positive
 
     def _eval_is_negative(self):
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             return self.args[0].is_negative
 
     def _sage_(self):
@@ -858,7 +857,7 @@ class sech(ReciprocalHyperbolicFunction):
         return S.ImaginaryUnit / sinh(arg + S.ImaginaryUnit * S.Pi /2)
 
     def _eval_is_positive(self):
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             return True
 
     def _sage_(self):
@@ -1023,7 +1022,7 @@ class acosh(InverseHyperbolicFunction):
             }
 
             if arg in cst_table:
-                if arg.is_real:
+                if arg.is_extended_real:
                     return cst_table[arg]*S.ImaginaryUnit
                 return cst_table[arg]
 
@@ -1237,7 +1236,7 @@ class asech(InverseHyperbolicFunction):
     >>> from sympy import asech, sqrt, S
     >>> from sympy.abc import x
     >>> asech(x).diff(x)
-    -1/(x*sqrt(-x**2 + 1))
+    -1/(x*sqrt(1 - x**2))
     >>> asech(1).diff(x)
     0
     >>> asech(1)
@@ -1317,7 +1316,7 @@ class asech(InverseHyperbolicFunction):
             }
 
             if arg in cst_table:
-                if arg.is_real:
+                if arg.is_extended_real:
                     return cst_table[arg]*S.ImaginaryUnit
                 return cst_table[arg]
 

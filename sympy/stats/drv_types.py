@@ -1,15 +1,34 @@
+"""
+
+Contains
+========
+Geometric
+Poisson
+Logarithmic
+NegativeBinomial
+Poisson
+YuleSimon
+Zeta
+"""
+
+
 from __future__ import print_function, division
 
-from sympy.stats.drv import SingleDiscreteDistribution, SingleDiscretePSpace
-from sympy import (factorial, exp, S, sympify, And, I, zeta, polylog, log, beta, hyper, binomial,
-                   Piecewise, floor)
-from sympy.stats.rv import _value_check, RandomSymbol
-from sympy.stats.joint_rv_types import JointRV
-from sympy.stats.joint_rv import MarginalDistribution, JointPSpace, CompoundDistribution
+from sympy import (factorial, exp, S, sympify, And, I, zeta, polylog, log, beta,
+    hyper, binomial, Piecewise, floor)
 from sympy.stats import density
+from sympy.stats.drv import SingleDiscreteDistribution, SingleDiscretePSpace
+from sympy.stats.joint_rv import JointPSpace, CompoundDistribution
+from sympy.stats.rv import _value_check, RandomSymbol
 import random
 
-__all__ = ['Geometric', 'Logarithmic', 'NegativeBinomial', 'Poisson', 'YuleSimon', 'Zeta']
+__all__ = ['Geometric',
+'Logarithmic',
+'NegativeBinomial',
+'Poisson',
+'YuleSimon',
+'Zeta'
+]
 
 
 def rv(symbol, cls, *args):
@@ -31,7 +50,7 @@ class GeometricDistribution(SingleDiscreteDistribution):
 
     @staticmethod
     def check(p):
-        _value_check(And(0 < p, p <= 1), "p must be between 0 and 1")
+        _value_check((0 < p, p <= 1), "p must be between 0 and 1")
 
     def pdf(self, k):
         return (1 - self.p)**(k - 1) * self.p
@@ -86,8 +105,9 @@ def Geometric(name, p):
     References
     ==========
 
-    [1] https://en.wikipedia.org/wiki/Geometric_distribution
-    [2] http://mathworld.wolfram.com/GeometricDistribution.html
+    .. [1] https://en.wikipedia.org/wiki/Geometric_distribution
+    .. [2] http://mathworld.wolfram.com/GeometricDistribution.html
+
     """
     return rv(name, GeometricDistribution, p)
 
@@ -102,7 +122,7 @@ class LogarithmicDistribution(SingleDiscreteDistribution):
 
     @staticmethod
     def check(p):
-        _value_check(And(p > 0, p < 1), "p should be between 0 and 1")
+        _value_check((p > 0, p < 1), "p should be between 0 and 1")
 
     def pdf(self, k):
         p = self.p
@@ -159,6 +179,13 @@ def Logarithmic(name, p):
 
     >>> variance(X)
     -1/((-4*log(5) + 8*log(2))*(-2*log(5) + 4*log(2))) + 1/(-64*log(2)*log(5) + 64*log(2)**2 + 16*log(5)**2) - 10/(-32*log(5) + 64*log(2))
+
+    References
+    ==========
+
+    .. [1] https://en.wikipedia.org/wiki/Logarithmic_distribution
+    .. [2] http://mathworld.wolfram.com/LogarithmicDistribution.html
+
     """
     return rv(name, LogarithmicDistribution, p)
 
@@ -173,7 +200,7 @@ class NegativeBinomialDistribution(SingleDiscreteDistribution):
     @staticmethod
     def check(r, p):
         _value_check(r > 0, 'r should be positive')
-        _value_check(And(p > 0, p < 1), 'p should be between 0 and 1')
+        _value_check((p > 0, p < 1), 'p should be between 0 and 1')
 
     def pdf(self, k):
         r = self.r
@@ -238,6 +265,13 @@ def NegativeBinomial(name, r, p):
 
     >>> variance(X)
     25/16
+
+    References
+    ==========
+
+    .. [1] https://en.wikipedia.org/wiki/Negative_binomial_distribution
+    .. [2] http://mathworld.wolfram.com/NegativeBinomialDistribution.html
+
     """
     return rv(name, NegativeBinomialDistribution, r, p)
 
@@ -326,8 +360,9 @@ def Poisson(name, lamda):
     References
     ==========
 
-    [1] https://en.wikipedia.org/wiki/Poisson_distribution
-    [2] http://mathworld.wolfram.com/PoissonDistribution.html
+    .. [1] https://en.wikipedia.org/wiki/Poisson_distribution
+    .. [2] http://mathworld.wolfram.com/PoissonDistribution.html
+
     """
     return rv(name, PoissonDistribution, lamda)
 
@@ -401,6 +436,12 @@ def YuleSimon(name, rho):
 
     >>> simplify(variance(X))
     25/48
+
+    References
+    ==========
+
+    .. [1] https://en.wikipedia.org/wiki/Yule%E2%80%93Simon_distribution
+
     """
     return rv(name, YuleSimonDistribution, rho)
 
@@ -469,5 +510,11 @@ def Zeta(name, s):
 
     >>> variance(X)
     -pi**8/(8100*zeta(5)**2) + zeta(3)/zeta(5)
+
+    References
+    ==========
+
+    .. [1] https://en.wikipedia.org/wiki/Zeta_distribution
+
     """
     return rv(name, ZetaDistribution, s)

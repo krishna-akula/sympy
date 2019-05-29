@@ -174,7 +174,8 @@ def test_infinity():
     assert ask(Q.complex(oo)) is False
     assert ask(Q.irrational(oo)) is False
     assert ask(Q.imaginary(oo)) is False
-    assert ask(Q.positive(oo)) is True
+    assert ask(Q.positive(oo)) is False
+    #assert ask(Q.extended_positive(oo)) is True
     assert ask(Q.negative(oo)) is False
     assert ask(Q.even(oo)) is False
     assert ask(Q.odd(oo)) is False
@@ -197,7 +198,8 @@ def test_neg_infinity():
     assert ask(Q.irrational(mm)) is False
     assert ask(Q.imaginary(mm)) is False
     assert ask(Q.positive(mm)) is False
-    assert ask(Q.negative(mm)) is True
+    assert ask(Q.negative(mm)) is False
+    #assert ask(Q.extended_negative(mm)) is True
     assert ask(Q.even(mm)) is False
     assert ask(Q.odd(mm)) is False
     assert ask(Q.finite(mm)) is False
@@ -1176,7 +1178,8 @@ def test_complex():
     assert ask(Q.complex(im(x))) is True
 
 
-def test_even():
+@slow
+def test_even_query():
     assert ask(Q.even(x)) is None
     assert ask(Q.even(x), Q.integer(x)) is None
     assert ask(Q.even(x), ~Q.integer(x)) is False
@@ -1330,6 +1333,7 @@ def test_rational():
         assert ask(Q.rational(h(x)), Q.rational(x)) is False
 
 
+@slow
 def test_hermitian():
     assert ask(Q.hermitian(x)) is None
     assert ask(Q.hermitian(x), Q.antihermitian(x)) is False
@@ -1535,6 +1539,7 @@ def test_integer():
     assert ask(Q.integer(x/3), Q.even(x)) is None
 
 
+@slow
 def test_negative():
     assert ask(Q.negative(x), Q.negative(x)) is True
     assert ask(Q.negative(x), Q.positive(x)) is False
@@ -1606,6 +1611,7 @@ def test_nonzero():
     assert ask(Q.nonzero(cos(1)**2 + sin(1)**2 - 1)) is None
 
 
+@slow
 def test_zero():
     assert ask(Q.zero(x)) is None
     assert ask(Q.zero(x), Q.real(x)) is None
@@ -1636,7 +1642,8 @@ def test_zero():
     assert ask(Q.zero(x) | Q.zero(y), Q.zero(x*y)) is True
 
 
-def test_odd():
+@slow
+def test_odd_query():
     assert ask(Q.odd(x)) is None
     assert ask(Q.odd(x), Q.odd(x)) is True
     assert ask(Q.odd(x), Q.integer(x)) is None
@@ -1741,6 +1748,7 @@ def test_prime():
     assert ask(Q.prime(x**y), Q.integer(x) & Q.integer(y)) is False
 
 
+@slow
 def test_positive():
     assert ask(Q.positive(x), Q.positive(x)) is True
     assert ask(Q.positive(x), Q.negative(x)) is False
@@ -2176,7 +2184,7 @@ def test_check_old_assumption():
     assert ask(Q.real(x)) is None
     assert ask(Q.complex(x)) is True
 
-    x = symbols('x', positive=True)
+    x = symbols('x', positive=True, finite=True)
     assert ask(Q.positive(x)) is True
     assert ask(Q.negative(x)) is False
     assert ask(Q.real(x)) is True
@@ -2239,9 +2247,8 @@ def test_issue_9636():
     assert ask(Q.odd(3.0)) is False
 
 
-@XFAIL
-def test_autosimp_fails():
-    # Unxfail after fixing issue #9807
+def test_autosimp_used_to_fail():
+    # See issue #9807
     assert ask(Q.imaginary(0**I)) is False
     assert ask(Q.imaginary(0**(-I))) is False
     assert ask(Q.real(0**I)) is False

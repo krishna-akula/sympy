@@ -1,13 +1,13 @@
 from __future__ import print_function, division
 
-from sympy.core import S, sympify, diff, oo
-from sympy.core.function import Function, ArgumentIndexError
-from sympy.core.relational import Eq
-from sympy.core.logic import fuzzy_not
-from sympy.polys.polyerrors import PolynomialError
-from sympy.functions.elementary.complexes import im, sign, Abs
-from sympy.functions.elementary.piecewise import Piecewise
+from sympy.core import S, sympify, diff
 from sympy.core.decorators import deprecated
+from sympy.core.function import Function, ArgumentIndexError
+from sympy.core.logic import fuzzy_not
+from sympy.core.relational import Eq
+from sympy.functions.elementary.complexes import im, sign
+from sympy.functions.elementary.piecewise import Piecewise
+from sympy.polys.polyerrors import PolynomialError
 from sympy.utilities import filldedent
 
 
@@ -504,9 +504,9 @@ class Heaviside(Function):
         """
         H0 = sympify(H0)
         arg = sympify(arg)
-        if arg.is_negative:
+        if arg.is_extended_negative:
             return S.Zero
-        elif arg.is_positive:
+        elif arg.is_extended_positive:
             return S.One
         elif arg.is_zero:
             return H0
@@ -580,7 +580,7 @@ class Heaviside(Function):
         sign
 
         """
-        if arg.is_real:
+        if arg.is_extended_real:
             if H0 is None or H0 == S.Half:
                 return (sign(arg)+1)/2
 

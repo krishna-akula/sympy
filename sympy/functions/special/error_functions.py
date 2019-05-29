@@ -4,6 +4,7 @@
 from __future__ import print_function, division
 
 from sympy.core import Add, S, sympify, cacheit, pi, I
+from sympy.core.compatibility import range
 from sympy.core.function import Function, ArgumentIndexError
 from sympy.core.symbol import Symbol
 from sympy.functions.combinatorial.factorials import factorial
@@ -14,7 +15,6 @@ from sympy.functions.elementary.complexes import polar_lift
 from sympy.functions.elementary.hyperbolic import cosh, sinh
 from sympy.functions.elementary.trigonometric import cos, sin, sinc
 from sympy.functions.special.hyper import hyper, meijerg
-from sympy.core.compatibility import range
 
 # TODO series expansions
 # TODO see the "Note:" in Ei
@@ -157,7 +157,13 @@ class erf(Function):
         return self.func(self.args[0].conjugate())
 
     def _eval_is_real(self):
-        return self.args[0].is_real
+        return self.args[0].is_extended_real
+
+    def _eval_is_finite(self):
+        if self.args[0].is_finite:
+            return True
+        else:
+            return self.args[0].is_extended_real
 
     def _eval_rewrite_as_uppergamma(self, z, **kwargs):
         from sympy import uppergamma
@@ -199,7 +205,7 @@ class erf(Function):
             return self.func(arg)
 
     def as_real_imag(self, deep=True, **hints):
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             if deep:
                 hints['complex'] = False
                 return (self.expand(deep, **hints), S.Zero)
@@ -258,7 +264,7 @@ class erfc(Function):
     It also follows
 
     >>> erfc(-z)
-    -erfc(z) + 2
+    2 - erfc(z)
 
     We can numerically evaluate the complementary error function to arbitrary precision
     on the whole complex plane:
@@ -346,7 +352,7 @@ class erfc(Function):
         return self.func(self.args[0].conjugate())
 
     def _eval_is_real(self):
-        return self.args[0].is_real
+        return self.args[0].is_extended_real
 
     def _eval_rewrite_as_tractable(self, z, **kwargs):
         return self.rewrite(erf).rewrite("tractable", deep=True)
@@ -391,7 +397,7 @@ class erfc(Function):
             return self.func(arg)
 
     def as_real_imag(self, deep=True, **hints):
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             if deep:
                 hints['complex'] = False
                 return (self.expand(deep, **hints), S.Zero)
@@ -526,8 +532,8 @@ class erfi(Function):
     def _eval_conjugate(self):
         return self.func(self.args[0].conjugate())
 
-    def _eval_is_real(self):
-        return self.args[0].is_real
+    def _eval_is_extended_real(self):
+        return self.args[0].is_extended_real
 
     def _eval_rewrite_as_tractable(self, z, **kwargs):
         return self.rewrite(erf).rewrite("tractable", deep=True)
@@ -563,7 +569,7 @@ class erfi(Function):
         return self.rewrite(erf)
 
     def as_real_imag(self, deep=True, **hints):
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             if deep:
                 hints['complex'] = False
                 return (self.expand(deep, **hints), S.Zero)
@@ -600,7 +606,7 @@ class erf2(Function):
     >>> erf2(x, x)
     0
     >>> erf2(x, oo)
-    -erf(x) + 1
+    1 - erf(x)
     >>> erf2(x, -oo)
     -erf(x) - 1
     >>> erf2(oo, y)
@@ -679,8 +685,8 @@ class erf2(Function):
     def _eval_conjugate(self):
         return self.func(self.args[0].conjugate(), self.args[1].conjugate())
 
-    def _eval_is_real(self):
-        return self.args[0].is_real and self.args[1].is_real
+    def _eval_is_extended_real(self):
+        return self.args[0].is_extended_real and self.args[1].is_extended_real
 
     def _eval_rewrite_as_erf(self, x, y, **kwargs):
         return erf(y) - erf(x)
@@ -788,12 +794,12 @@ class erfinv(Function):
         elif z is S.One:
             return S.Infinity
 
-        if isinstance(z, erf) and z.args[0].is_real:
+        if isinstance(z, erf) and z.args[0].is_extended_real:
             return z.args[0]
 
         # Try to pull out factors of -1
         nz = z.extract_multiplicatively(-1)
-        if nz is not None and (isinstance(nz, erf) and (nz.args[0]).is_real):
+        if nz is not None and (isinstance(nz, erf) and (nz.args[0]).is_extended_real):
             return -nz.args[0]
 
     def _eval_rewrite_as_erfcinv(self, z, **kwargs):
@@ -1142,7 +1148,7 @@ class expint(Function):
     Differentiation with respect to nu has no classical expression:
 
     >>> expint(nu, z).diff(nu)
-    -z**(nu - 1)*meijerg(((), (1, 1)), ((0, 0, -nu + 1), ()), z)
+    -z**(nu - 1)*meijerg(((), (1, 1)), ((0, 0, 1 - nu), ()), z)
 
     At non-postive integer orders, the exponential integral reduces to the
     exponential function:
@@ -1169,7 +1175,7 @@ class expint(Function):
 
     >>> from sympy import uppergamma
     >>> expint(nu, z).rewrite(uppergamma)
-    z**(nu - 1)*uppergamma(-nu + 1, z)
+    z**(nu - 1)*uppergamma(1 - nu, z)
 
     As such it is branched at the origin:
 
@@ -1177,7 +1183,7 @@ class expint(Function):
     >>> expint(4, z*exp_polar(2*pi*I))
     I*pi*z**3/3 + expint(4, z)
     >>> expint(nu, z*exp_polar(2*pi*I))
-    z**(nu - 1)*(exp(2*I*pi*nu) - 1)*gamma(-nu + 1) + expint(nu, z)
+    z**(nu - 1)*(exp(2*I*pi*nu) - 1)*gamma(1 - nu) + expint(nu, z)
 
     See Also
     ========
@@ -1218,7 +1224,7 @@ class expint(Function):
         if n == 0:
             return
         if nu.is_integer:
-            if (nu > 0) != True:
+            if not nu > 0:
                 return
             return expint(nu, z) \
                 - 2*pi*I*n*(-1)**(nu - 1)/factorial(nu - 1)*unpolarify(z)**(nu - 1)
@@ -1409,7 +1415,7 @@ class li(Function):
     def _eval_conjugate(self):
         z = self.args[0]
         # Exclude values on the branch cut (-oo, 0)
-        if not (z.is_real and z.is_negative):
+        if not z.is_extended_negative:
             return self.func(z.conjugate())
 
     def _eval_rewrite_as_Li(self, z, **kwargs):
@@ -2034,14 +2040,14 @@ class FresnelIntegral(Function):
         else:
             raise ArgumentIndexError(self, argindex)
 
-    def _eval_is_real(self):
-        return self.args[0].is_real
+    def _eval_is_extended_real(self):
+        return self.args[0].is_extended_real
 
     def _eval_conjugate(self):
         return self.func(self.args[0].conjugate())
 
     def _as_real_imag(self, deep=True, **hints):
-        if self.args[0].is_real:
+        if self.args[0].is_extended_real:
             if deep:
                 hints['complex'] = False
                 return (self.expand(deep, **hints), S.Zero)

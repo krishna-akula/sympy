@@ -1,15 +1,15 @@
 from __future__ import print_function, division
 
 from sympy import (Basic, sympify, symbols, Dummy, Lambda, summation,
-                   Piecewise, S, cacheit, Sum, exp, I, oo, Ne, Eq, poly,
-                   Symbol, series, factorial, And, Mul)
+                   Piecewise, S, cacheit, Sum, exp, I, Ne, Eq, poly,
+                   series, factorial, And)
 
 from sympy.polys.polyerrors import PolynomialError
 from sympy.solvers.solveset import solveset
 from sympy.stats.crv import reduce_rational_inequalities_wrap
 from sympy.stats.rv import (NamedArgsMixin, SinglePSpace, SingleDomain,
                             random_symbols, PSpace, ConditionalDomain, RandomDomain,
-                            ProductDomain, ProductPSpace)
+                            ProductDomain)
 from sympy.stats.symbolic_probability import Probability
 from sympy.functions.elementary.integers import floor
 from sympy.sets.fancysets import Range, FiniteSet
@@ -138,6 +138,31 @@ class SingleDiscreteDistribution(DiscreteDistribution, NamedArgsMixin):
                 return mgf
         return self.compute_moment_generating_function(**kwargs)(t)
 
+    @cacheit
+    def compute_quantile(self, **kwargs):
+        """ Compute the Quantile from the PDF
+
+        Returns a Lambda
+        """
+        x = symbols('x', integer=True, finite=True, cls=Dummy)
+        p = symbols('p', real=True, finite=True, cls=Dummy)
+        left_bound = self.set.inf
+        pdf = self.pdf(x)
+        cdf = summation(pdf, (x, left_bound, x), **kwargs)
+        set = ((x, p <= cdf), )
+        return Lambda(p, Piecewise(*set))
+
+    def _quantile(self, x):
+        return None
+
+    def quantile(self, x, **kwargs):
+        """ Cumulative density function """
+        if not kwargs:
+            quantile = self._quantile(x)
+            if quantile is not None:
+                return quantile
+        return self.compute_quantile(**kwargs)(x)
+
     def expectation(self, expr, var, evaluate=True, **kwargs):
         """ Expectation of expression over distribution """
         # TODO: support discrete sets with non integer stepsizes
@@ -218,7 +243,7 @@ class DiscretePSpace(PSpace):
     def where(self, condition):
         rvs = random_symbols(condition)
         assert all(r.symbol in self.symbols for r in rvs)
-        if (len(rvs) > 1):
+        if len(rvs) > 1:
             raise NotImplementedError(filldedent('''Multivariate discrete
             random variables are not yet supported.'''))
         conditional_domain = reduce_rational_inequalities_wrap(condition,
@@ -246,7 +271,7 @@ class DiscretePSpace(PSpace):
             z = Dummy('z', real = True)
             space = SingleDiscretePSpace(z, dens)
             prob = space.probability(condition.__class__(space.value, 0))
-        if (prob == None):
+        if prob is None:
             prob = Probability(condition)
         return prob if not complement else S.One - prob
 
@@ -336,5 +361,12 @@ class SingleDiscretePSpace(DiscretePSpace, SinglePSpace):
         if expr == self.value:
             t = symbols("t", real=True, cls=Dummy)
             return Lambda(t, self.distribution.moment_generating_function(t, **kwargs))
+        else:
+            raise NotImplementedError()
+
+    def compute_quantile(self, expr, **kwargs):
+        if expr == self.value:
+            p = symbols("p", real=True, finite=True, cls=Dummy)
+            return Lambda(p, self.distribution.quantile(p, **kwargs))
         else:
             raise NotImplementedError()

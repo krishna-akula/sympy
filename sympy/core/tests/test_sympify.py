@@ -2,7 +2,8 @@ from sympy import (Symbol, exp, Integer, Float, sin, cos, log, Poly, Lambda,
     Function, I, S, N, sqrt, srepr, Rational, Tuple, Matrix, Interval, Add, Mul,
     Pow, Or, true, false, Abs, pi, Range, Xor)
 from sympy.abc import x, y
-from sympy.core.sympify import sympify, _sympify, SympifyError, kernS
+from sympy.core.sympify import (sympify, _sympify, SympifyError, kernS,
+    CantSympify)
 from sympy.core.decorators import _sympifyit
 from sympy.external import import_module
 from sympy.utilities.pytest import raises, XFAIL, skip
@@ -161,9 +162,27 @@ def test_sympify_bool():
 def test_sympyify_iterables():
     ans = [Rational(3, 10), Rational(1, 5)]
     assert sympify(['.3', '.2'], rational=True) == ans
-    assert sympify(tuple(['.3', '.2']), rational=True) == Tuple(*ans)
     assert sympify(dict(x=0, y=1)) == {x: 0, y: 1}
     assert sympify(['1', '2', ['3', '4']]) == [S(1), S(2), [S(3), S(4)]]
+
+
+@XFAIL
+def test_issue_16772():
+    # because there is a converter for tuple, the
+    # args are only sympified without the flags being passed
+    # along; list, on the other hand, is not converted
+    # with a converter so its args are traversed later
+    ans = [Rational(3, 10), Rational(1, 5)]
+    assert sympify(tuple(['.3', '.2']), rational=True) == Tuple(*ans)
+
+
+@XFAIL
+def test_issue_16859():
+    # because there is a converter for float, the
+    # CantSympify class designation is ignored
+    class no(float, CantSympify):
+        pass
+    raises(SympifyError, lambda: sympify(no(1.2)))
 
 
 def test_sympify4():
@@ -596,17 +615,14 @@ def test_sympify_numpy():
     assert equal(sympify(np.complex128(1 + 2j)), S(1.0 + 2.0*I))
     assert equal(sympify(np.longcomplex(1 + 2j)), S(1.0 + 2.0*I))
 
-    try:
+    #float96 does not exist on all platforms
+    if hasattr(np, 'float96'):
         assert equal(sympify(np.float96(1.123456789)),
                     Float(1.123456789, precision=80))
-    except AttributeError:  #float96 does not exist on all platforms
-        pass
-
-    try:
+    #float128 does not exist on all platforms
+    if hasattr(np, 'float128'):
         assert equal(sympify(np.float128(1.123456789123)),
                     Float(1.123456789123, precision=80))
-    except AttributeError:  #float128 does not exist on all platforms
-        pass
 
 
 @XFAIL
@@ -660,3 +676,9 @@ def test_numpy_sympify_args():
     a = sympify(numpy.str_('x + x'), evaluate=False)
     assert isinstance(a, Add)
     assert a == Add(x, x, evaluate=False)
+
+
+def test_issue_5939():
+     a = Symbol('a')
+     b = Symbol('b')
+     assert sympify('''a+\nb''') == a + b

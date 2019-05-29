@@ -2,37 +2,31 @@ from __future__ import print_function, division
 
 from collections import defaultdict
 
-from sympy.core import (Basic, S, Add, Mul, Pow,
-    Symbol, sympify, expand_mul, expand_func,
-    Function, Dummy, Expr, factor_terms,
-    symbols, expand_power_exp)
-from sympy.core.compatibility import (iterable,
-    ordered, range, as_int)
-from sympy.core.numbers import Float, I, pi, Rational, Integer
-from sympy.core.function import expand_log, count_ops, _mexpand, _coeff_isneg, nfloat
-from sympy.core.rules import Transform
+from sympy.core import (Basic, S, Add, Mul, Pow, Symbol, sympify, expand_mul,
+                        expand_func, Function, Dummy, Expr, factor_terms,
+                        expand_power_exp)
+from sympy.core.compatibility import iterable, ordered, range, as_int
 from sympy.core.evaluate import global_evaluate
-from sympy.functions import (
-    gamma, exp, sqrt, log, exp_polar, piecewise_fold)
+from sympy.core.function import expand_log, count_ops, _mexpand, _coeff_isneg, nfloat
+from sympy.core.numbers import Float, I, pi, Rational, Integer
+from sympy.core.rules import Transform
 from sympy.core.sympify import _sympify
+from sympy.functions import gamma, exp, sqrt, log, exp_polar, piecewise_fold
+from sympy.functions.combinatorial.factorials import CombinatorialFunction
+from sympy.functions.elementary.complexes import unpolarify
 from sympy.functions.elementary.exponential import ExpBase
 from sympy.functions.elementary.hyperbolic import HyperbolicFunction
 from sympy.functions.elementary.integers import ceiling
-from sympy.functions.elementary.complexes import unpolarify
 from sympy.functions.elementary.trigonometric import TrigonometricFunction
-from sympy.functions.combinatorial.factorials import CombinatorialFunction
 from sympy.functions.special.bessel import besselj, besseli, besselk, jn, bessely
-
-from sympy.utilities.iterables import has_variety
-
-from sympy.simplify.radsimp import radsimp, fraction
-from sympy.simplify.trigsimp import trigsimp, exptrigsimp
-from sympy.simplify.powsimp import powsimp
-from sympy.simplify.cse_opts import sub_pre, sub_post
-from sympy.simplify.sqrtdenest import sqrtdenest
+from sympy.polys import together, cancel, factor
 from sympy.simplify.combsimp import combsimp
-
-from sympy.polys import (together, cancel, factor)
+from sympy.simplify.cse_opts import sub_pre, sub_post
+from sympy.simplify.powsimp import powsimp
+from sympy.simplify.radsimp import radsimp, fraction
+from sympy.simplify.sqrtdenest import sqrtdenest
+from sympy.simplify.trigsimp import trigsimp, exptrigsimp
+from sympy.utilities.iterables import has_variety, sift
 
 
 import mpmath
@@ -60,6 +54,7 @@ def separatevars(expr, symbols=[], dict=False, force=False):
 
     Notes
     =====
+
     The order of the factors is determined by Mul, so that the
     separated expressions may not necessarily be grouped together.
 
@@ -198,7 +193,7 @@ def _separatevars_dict(expr, symbols):
 def _is_sum_surds(p):
     args = p.args if p.is_Add else [p]
     for y in args:
-        if not ((y**2).is_Rational and y.is_real):
+        if not ((y**2).is_Rational and y.is_extended_real):
             return False
     return True
 
@@ -255,8 +250,8 @@ def posify(eq):
             eq[i] = e.subs(reps)
         return f(eq), {r: s for s, r in reps.items()}
 
-    reps = dict([(s, Dummy(s.name, positive=True))
-                 for s in eq.free_symbols if s.is_positive is None])
+    reps = {s: Dummy(s.name, positive=True, **s.assumptions0)
+                 for s in eq.free_symbols if s.is_positive is None}
     eq = eq.subs(reps)
     return eq, {r: s for s, r in reps.items()}
 
@@ -465,7 +460,7 @@ def simplify(expr, ratio=1.7, measure=count_ops, rational=False, inverse=False):
     >>> g = log(a) + log(b) + log(a)*log(1/b)
     >>> h = simplify(g)
     >>> h
-    log(a*b**(-log(a) + 1))
+    log(a*b**(1 - log(a)))
     >>> count_ops(g)
     8
     >>> count_ops(h)
@@ -515,18 +510,20 @@ def simplify(expr, ratio=1.7, measure=count_ops, rational=False, inverse=False):
     x belongs to the set where this relation is true. The default is
     False.
     """
-    expr = sympify(expr)
 
-    try:
-        return expr._eval_simplify(ratio=ratio, measure=measure, rational=rational, inverse=inverse)
-    except AttributeError:
-        pass
+    expr = sympify(expr)
+    kwargs = dict(ratio=ratio, measure=measure,
+        rational=rational, inverse=inverse)
+
+    _eval_simplify = getattr(expr, '_eval_simplify', None)
+    if _eval_simplify is not None:
+        return _eval_simplify(ratio=ratio, measure=measure, rational=rational, inverse=inverse)
 
     original_expr = expr = signsimp(expr)
 
     from sympy.simplify.hyperexpand import hyperexpand
     from sympy.functions.special.bessel import BesselBase
-    from sympy import Sum, Product
+    from sympy import Sum, Product, Integral
 
     if not isinstance(expr, Basic) or not expr.args:  # XXX: temporary hack
         return expr
@@ -537,8 +534,7 @@ def simplify(expr, ratio=1.7, measure=count_ops, rational=False, inverse=False):
             return expr
 
     if not isinstance(expr, (Add, Mul, Pow, ExpBase)):
-        return expr.func(*[simplify(x, ratio=ratio, measure=measure, rational=rational, inverse=inverse)
-                         for x in expr.args])
+        return expr.func(*[simplify(x, **kwargs) for x in expr.args])
 
     if not expr.is_commutative:
         expr = nc_simplify(expr)
@@ -560,7 +556,7 @@ def simplify(expr, ratio=1.7, measure=count_ops, rational=False, inverse=False):
         floats = True
         expr = nsimplify(expr, rational=True)
 
-    expr = bottom_up(expr, lambda w: w.normal())
+    expr = bottom_up(expr, lambda w: getattr(w, 'normal', lambda: w)())
     expr = Mul(*powsimp(expr).as_content_primitive())
     _e = cancel(expr)
     expr1 = shorter(_e, _mexpand(_e).cancel())  # issue 6829
@@ -595,7 +591,11 @@ def simplify(expr, ratio=1.7, measure=count_ops, rational=False, inverse=False):
         expr = combsimp(expr)
 
     if expr.has(Sum):
-        expr = sum_simplify(expr)
+        expr = sum_simplify(expr, **kwargs)
+
+    if expr.has(Integral):
+        expr = expr.xreplace(dict([
+            (i, factor_terms(i)) for i in expr.atoms(Integral)]))
 
     if expr.has(Product):
         expr = product_simplify(expr)
@@ -644,48 +644,35 @@ def simplify(expr, ratio=1.7, measure=count_ops, rational=False, inverse=False):
     return expr
 
 
-def sum_simplify(s):
+def sum_simplify(s, **kwargs):
     """Main function for Sum simplification"""
     from sympy.concrete.summations import Sum
     from sympy.core.function import expand
 
-    terms = Add.make_args(expand(s))
+    if not isinstance(s, Add):
+        s = s.xreplace(dict([(a, sum_simplify(a, **kwargs))
+            for a in s.atoms(Add) if a.has(Sum)]))
+    s = expand(s)
+    if not isinstance(s, Add):
+        return s
+
+    terms = s.args
     s_t = [] # Sum Terms
     o_t = [] # Other Terms
 
     for term in terms:
-        if isinstance(term, Mul):
-            other = 1
-            sum_terms = []
-
-            if not term.has(Sum):
-                o_t.append(term)
-                continue
-
-            mul_terms = Mul.make_args(term)
-            for mul_term in mul_terms:
-                if isinstance(mul_term, Sum):
-                    r = mul_term._eval_simplify()
-                    sum_terms.extend(Add.make_args(r))
-                else:
-                    other = other * mul_term
-            if len(sum_terms):
-                #some simplification may have happened
-                #use if so
-                s_t.append(Mul(*sum_terms) * other)
-            else:
-                o_t.append(other)
-        elif isinstance(term, Sum):
-            #as above, we need to turn this into an add list
-            r = term._eval_simplify()
-            s_t.extend(Add.make_args(r))
-        else:
+        sum_terms, other = sift(Mul.make_args(term),
+            lambda i: isinstance(i, Sum), binary=True)
+        if not sum_terms:
             o_t.append(term)
-
+            continue
+        other = [Mul(*other)]
+        s_t.append(Mul(*(other + [s._eval_simplify(**kwargs) for s in sum_terms])))
 
     result = Add(sum_combine(s_t), *o_t)
 
     return result
+
 
 def sum_combine(s_t):
     """Helper function for Sum simplification
@@ -694,7 +681,6 @@ def sum_combine(s_t):
        returns the simplified sum
     """
     from sympy.concrete.summations import Sum
-
 
     used = [False] * len(s_t)
 
@@ -716,37 +702,32 @@ def sum_combine(s_t):
 
     return result
 
+
 def factor_sum(self, limits=None, radical=False, clear=False, fraction=False, sign=True):
-    """Helper function for Sum simplification
+    """Return Sum with constant factors extracted.
 
-       if limits is specified, "self" is the inner part of a sum
+    If ``limits`` is specified then ``self`` is the summand; the other
+    keywords are passed to ``factor_terms``.
 
-       Returns the sum with constant factors brought outside
+    Examples
+    ========
+
+    >>> from sympy import Sum, Integral
+    >>> from sympy.abc import x, y
+    >>> from sympy.simplify.simplify import factor_sum
+    >>> s = Sum(x*y, (x, 1, 3))
+    >>> factor_sum(s)
+    y*Sum(x, (x, 1, 3))
+    >>> factor_sum(s.function, s.limits)
+    y*Sum(x, (x, 1, 3))
     """
-    from sympy.core.exprtools import factor_terms
+    # XXX deprecate in favor of direct call to factor_terms
     from sympy.concrete.summations import Sum
+    kwargs = dict(radical=radical, clear=clear,
+        fraction=fraction, sign=sign)
+    expr = Sum(self, *limits) if limits else self
+    return factor_terms(expr, **kwargs)
 
-    result = self.function if limits is None else self
-    limits = self.limits if limits is None else limits
-    #avoid any confusion w/ as_independent
-    if result == 0:
-        return S.Zero
-
-    #get the summation variables
-    sum_vars = set([limit.args[0] for limit in limits])
-
-    #finally we try to factor out any common terms
-    #and remove the from the sum if independent
-    retv = factor_terms(result, radical=radical, clear=clear, fraction=fraction, sign=sign)
-    #avoid doing anything bad
-    if not result.is_commutative:
-        return Sum(result, *limits)
-
-    i, d = retv.as_independent(*sum_vars)
-    if isinstance(retv, Add):
-        return i * Sum(1, *limits) + Sum(d, *limits)
-    else:
-        return i * Sum(d, *limits)
 
 def sum_add(self, other, method=0):
     """Helper function for Sum simplification"""
@@ -885,7 +866,7 @@ def logcombine(expr, force=False):
     """
     Takes logarithms and combines them using the following rules:
 
-    - log(x) + log(y) == log(x*y) if both are not negative
+    - log(x) + log(y) == log(x*y) if both are positive
     - a*log(x) == log(x**a) if x is positive and a is real
 
     If ``force`` is True then the assumptions above will be assumed to hold if
@@ -920,6 +901,7 @@ def logcombine(expr, force=False):
 
     See Also
     ========
+
     posify: replace all symbols with symbols having positive assumptions
     sympy.core.function.expand_log: expand the logarithms of products
         and powers; the opposite of logcombine
@@ -934,7 +916,7 @@ def logcombine(expr, force=False):
             # bool to tell whether the leading ``a`` in ``a*log(x)``
             # could appear as log(x**a)
             return (a is not S.NegativeOne and  # -1 *could* go, but we disallow
-                (a.is_real or force and a.is_real is not False))
+                (a.is_extended_real or force and a.is_extended_real is not False))
 
         def goodlog(l):
             # bool to tell whether log ``l``'s argument can combine with others
@@ -970,6 +952,10 @@ def logcombine(expr, force=False):
                 else:
                     other.append(a)
 
+        # if there is only one log in other, put it with the
+        # good logs
+        if len(other) == 1 and isinstance(other[0], log):
+            log1[()].append(([], other.pop()))
         # if there is only one log at each coefficient and none have
         # an exponent to place inside the log then there is nothing to do
         if not logs and all(len(log1[k]) == 1 and log1[k][0] == [] for k in log1):
@@ -1067,6 +1053,7 @@ def walk(e, *target):
 
     See Also
     ========
+
     bottom_up
     """
     if isinstance(e, target):
@@ -1081,16 +1068,16 @@ def bottom_up(rv, F, atoms=False, nonbasic=False):
     bottom up. If ``atoms`` is True, apply ``F`` even if there are no args;
     if ``nonbasic`` is True, try to apply ``F`` to non-Basic objects.
     """
-    try:
-        if rv.args:
-            args = tuple([bottom_up(a, F, atoms, nonbasic)
-                for a in rv.args])
+    args = getattr(rv, 'args', None)
+    if args is not None:
+        if args:
+            args = tuple([bottom_up(a, F, atoms, nonbasic) for a in args])
             if args != rv.args:
                 rv = rv.func(*args)
             rv = F(rv)
         elif atoms:
             rv = F(rv)
-    except AttributeError:
+    else:
         if nonbasic:
             try:
                 rv = F(rv)
@@ -1295,6 +1282,7 @@ def nsimplify(expr, constants=(), tolerance=None, full=False, rational=None,
 
     See Also
     ========
+
     sympy.core.function.nfloat
 
     """
@@ -1386,6 +1374,9 @@ def nsimplify(expr, constants=(), tolerance=None, full=False, rational=None,
 def _real_to_rational(expr, tolerance=None, rational_conversion='base10'):
     """
     Replace all reals in expr with rationals.
+
+    Examples
+    ========
 
     >>> from sympy import Rational
     >>> from sympy.simplify.simplify import _real_to_rational

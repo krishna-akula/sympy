@@ -1,5 +1,8 @@
-from sympy import (Piecewise, lambdify, Equality, Unequality, Sum, Mod, cbrt,
-        sqrt, MatrixSymbol)
+from sympy import (
+    Piecewise, lambdify, Equality, Unequality, Sum, Mod, cbrt, sqrt,
+    MatrixSymbol, BlockMatrix
+)
+from sympy import eye
 from sympy.abc import x, i, j, a, b, c, d
 from sympy.codegen.cfunctions import log1p, expm1, hypot, log10, exp2, log2, Cbrt, Sqrt
 from sympy.codegen.array_utils import (CodegenArrayContraction,
@@ -7,6 +10,7 @@ from sympy.codegen.array_utils import (CodegenArrayContraction,
         CodegenArrayPermuteDims, CodegenArrayElementwiseAdd)
 from sympy.printing.lambdarepr import NumPyPrinter
 
+from sympy.utilities.pytest import warns_deprecated_sympy
 from sympy.utilities.pytest import skip
 from sympy.external import import_module
 
@@ -221,3 +225,30 @@ def test_sqrt():
     if not np:
         skip("NumPy not installed")
     assert abs(lambdify((a,), sqrt(a), 'numpy')(4) - 2) < 1e-16
+
+def test_issue_15601():
+    if not np:
+        skip("Numpy not installed")
+
+    M = MatrixSymbol("M", 3, 3)
+    N = MatrixSymbol("N", 3, 3)
+    expr = M*N
+    f = lambdify((M, N), expr, "numpy")
+
+    with warns_deprecated_sympy():
+        ans = f(eye(3), eye(3))
+        assert np.array_equal(ans, np.array([1, 0, 0, 0, 1, 0, 0, 0, 1]))
+
+def test_16857():
+    if not np:
+        skip("NumPy not installed")
+
+    a_1 = MatrixSymbol('a_1', 10, 3)
+    a_2 = MatrixSymbol('a_2', 10, 3)
+    a_3 = MatrixSymbol('a_3', 10, 3)
+    a_4 = MatrixSymbol('a_4', 10, 3)
+    A = BlockMatrix([[a_1, a_2], [a_3, a_4]])
+    assert A.shape == (20, 6)
+
+    printer = NumPyPrinter()
+    assert printer.doprint(A) == 'numpy.block([[a_1, a_2], [a_3, a_4]])'

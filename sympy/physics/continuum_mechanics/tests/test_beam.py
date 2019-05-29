@@ -1,7 +1,7 @@
-from sympy import Symbol, symbols, S, simplify
+from sympy import Symbol, symbols, S, simplify, Interval
 from sympy.physics.continuum_mechanics.beam import Beam
 from sympy.functions import SingularityFunction, Piecewise, meijerg, Abs, log
-from sympy.utilities.pytest import raises
+from sympy.utilities.pytest import raises, slow
 from sympy.physics.units import meter, newton, kilo, giga, milli
 from sympy.physics.continuum_mechanics.beam import Beam3D
 
@@ -324,6 +324,25 @@ def test_composite_beam():
     assert b.deflection().subs(x, 2*l) == 7*P*l**3/(24*E*I)
     assert b.deflection().subs(x, 3*l) == 5*P*l**3/(16*E*I)
 
+    # When beams having same second moment are joined.
+    b1 = Beam(2, 500, 10)
+    b2 = Beam(2, 500, 10)
+    b = b1.join(b2, "fixed")
+    b.apply_load(M1, 0, -2)
+    b.apply_load(R1, 0, -1)
+    b.apply_load(R2, 1, -1)
+    b.apply_load(R3, 4, -1)
+    b.apply_load(10, 3, -1)
+    b.bc_slope = [(0, 0)]
+    b.bc_deflection = [(0, 0), (1, 0), (4, 0)]
+    b.solve_for_reaction_loads(M1, R1, R2, R3)
+    assert b.slope() == -2*SingularityFunction(x, 0, 1)/5625 + SingularityFunction(x, 0, 2)/1875\
+                - 133*SingularityFunction(x, 1, 2)/135000 + SingularityFunction(x, 3, 2)/1000\
+                - 37*SingularityFunction(x, 4, 2)/67500
+    assert b.deflection() == -SingularityFunction(x, 0, 2)/5625 + SingularityFunction(x, 0, 3)/5625\
+                    - 133*SingularityFunction(x, 1, 3)/405000 + SingularityFunction(x, 3, 3)/3000\
+                    - 37*SingularityFunction(x, 4, 3)/202500
+
 
 def test_point_cflexure():
     E = Symbol('E')
@@ -398,8 +417,18 @@ def test_apply_support():
     assert b.deflection() == (4000*x/3 - 4*SingularityFunction(x, 0, 3)/3 + SingularityFunction(x, 10, 3)
             + 60*SingularityFunction(x, 30, 2) + SingularityFunction(x, 30, 3)/3 - 12000)/(E*I)
 
+    P = Symbol('P', positive=True)
+    L = Symbol('L', positive=True)
+    b = Beam(L, E, I)
+    b.apply_support(0, type='fixed')
+    b.apply_support(L, type='fixed')
+    b.apply_load(-P, L/2, -1)
+    R_0, R_L, M_0, M_L = symbols('R_0, R_L, M_0, M_L')
+    b.solve_for_reaction_loads(R_0, R_L, M_0, M_L)
+    assert b.reaction_loads == {R_0: P/2, R_L: P/2, M_0: -L*P/8, M_L: L*P/8}
 
-def max_shear_force(self):
+
+def test_max_shear_force():
     E = Symbol('E')
     I = Symbol('I')
 
@@ -459,6 +488,7 @@ def test_max_deflection():
     b.apply_load(-F, l/2, -1)
     assert b.max_deflection() == (l/2, F*l**3/(192*E*I))
 
+
 def test_Beam3D():
     l, E, G, I, A = symbols('l, E, G, I, A')
     R1, R2, R3, R4 = symbols('R1, R2, R3, R4')
@@ -473,17 +503,14 @@ def test_Beam3D():
 
     assert b.shear_force() == [0, -q*x, 0]
     assert b.bending_moment() == [0, 0, -m*x + q*x**2/2]
-    expected_deflection = (-l**2*q*x**2/(12*E*I) + l**2*x**2*(A*G*l*(l*q - 2*m)
-            + 12*E*I*q)/(8*E*I*(A*G*l**2 + 12*E*I)) + l*m*x**2/(4*E*I)
-            - l*x**3*(A*G*l*(l*q - 2*m) + 12*E*I*q)/(12*E*I*(A*G*l**2 + 12*E*I))
-            - m*x**3/(6*E*I) + q*x**4/(24*E*I)
-            + l*x*(A*G*l*(l*q - 2*m) + 12*E*I*q)/(2*A*G*(A*G*l**2 + 12*E*I))
-            - q*x**2/(2*A*G)
-            )
+    expected_deflection = (x*(A*G*q*x**3/4 + A*G*x**2*(-l*(A*G*l*(l*q - 2*m) +
+        12*E*I*q)/(A*G*l**2 + 12*E*I)/2 - m) + 3*E*I*l*(A*G*l*(l*q - 2*m) +
+        12*E*I*q)/(A*G*l**2 + 12*E*I) + x*(-A*G*l**2*q/2 +
+        3*A*G*l**2*(A*G*l*(l*q - 2*m) + 12*E*I*q)/(A*G*l**2 + 12*E*I)/4 +
+        3*A*G*l*m/2 - 3*E*I*q))/(6*A*E*G*I))
     dx, dy, dz = b.deflection()
     assert dx == dz == 0
-    assert simplify(dy - expected_deflection) == 0  # == doesn't work
-
+    assert dy == expected_deflection
 
     b2 = Beam3D(30, E, G, I, A, x)
     b2.apply_load(50, start=0, order=0, dir="y")
@@ -494,12 +521,12 @@ def test_Beam3D():
     assert b2.reaction_loads == {R1: -750, R2: -750}
 
     b2.solve_slope_deflection()
-    assert b2.slope() == [0, 0, 25*x**3/(3*E*I) - 375*x**2/(E*I) + 3750*x/(E*I)]
-    expected_deflection = (25*x**4/(12*E*I) - 125*x**3/(E*I) + 1875*x**2/(E*I)
-                        - 25*x**2/(A*G) + 750*x/(A*G))
+    assert b2.slope() == [0, 0, x**2*(50*x - 2250)/(6*E*I) + 3750*x/(E*I)]
+    expected_deflection = (x*(25*A*G*x**3/2 - 750*A*G*x**2 + 4500*E*I +
+        15*x*(750*A*G - 10*E*I))/(6*A*E*G*I))
     dx, dy, dz = b2.deflection()
     assert dx == dz == 0
-    assert simplify(dy - expected_deflection) == 0  # == doesn't work
+    assert dy == expected_deflection
 
     # Test for solve_for_reaction_loads
     b3 = Beam3D(30, E, G, I, A, x)

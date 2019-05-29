@@ -305,7 +305,7 @@ def test_issue_5184():
     assert limit(cos(x)/x, x, oo) == 0
     assert limit(gamma(x), x, Rational(1, 2)) == sqrt(pi)
 
-    r = Symbol('r', real=True, finite=True)
+    r = Symbol('r', real=True)
     assert limit(r*sin(1/r), r, 0) == 0
 
 
@@ -369,7 +369,7 @@ def test_extended_real_line():
 
 @XFAIL
 def test_order_oo():
-    x = Symbol('x', positive=True, finite=True)
+    x = Symbol('x', positive=True)
     assert Order(x)*oo != Order(1, x)
     assert limit(oo/(x**2 - 4), x, oo) == oo
 
@@ -536,3 +536,7 @@ def test_issue_10102():
 
 def test_issue_14377():
     raises(NotImplementedError, lambda: limit(exp(I*x)*sin(pi*x), x, oo))
+
+
+def test_issue_15984():
+    assert limit((-x + log(exp(x) + 1))/x, x, oo, dir='-').doit() == 0

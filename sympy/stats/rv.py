@@ -3,10 +3,11 @@ Main Random Variables Module
 
 Defines abstract random variable type.
 Contains interfaces for probability space object (PSpace) as well as standard
-operators, P, E, sample, density, where
+operators, P, E, sample, density, where, quantile
 
 See Also
 ========
+
 sympy.stats.crv
 sympy.stats.frv
 sympy.stats.rv_interface
@@ -16,13 +17,13 @@ from __future__ import print_function, division
 
 from sympy import (Basic, S, Expr, Symbol, Tuple, And, Add, Eq, lambdify,
         Equality, Lambda, sympify, Dummy, Ne, KroneckerDelta,
-        DiracDelta, Mul, Indexed)
-from sympy.core.relational import Relational
-from sympy.core.compatibility import string_types
-from sympy.logic.boolalg import Boolean
-from sympy.solvers.solveset import solveset
-from sympy.sets.sets import FiniteSet, ProductSet, Intersection
+        DiracDelta, Mul)
 from sympy.abc import x
+from sympy.core.compatibility import string_types
+from sympy.core.relational import Relational
+from sympy.logic.boolalg import Boolean
+from sympy.sets.sets import FiniteSet, ProductSet, Intersection
+from sympy.solvers.solveset import solveset
 
 
 class RandomDomain(Basic):
@@ -31,6 +32,7 @@ class RandomDomain(Basic):
 
     See Also
     ========
+
     sympy.stats.crv.ContinuousDomain
     sympy.stats.frv.FiniteDomain
     """
@@ -65,6 +67,7 @@ class SingleDomain(RandomDomain):
 
     See Also
     ========
+
     sympy.stats.crv.SingleContinuousDomain
     sympy.stats.frv.SingleFiniteDomain
     """
@@ -93,6 +96,7 @@ class ConditionalDomain(RandomDomain):
 
     See Also
     ========
+
     sympy.stats.crv.ConditionalContinuousDomain
     sympy.stats.frv.ConditionalFiniteDomain
     """
@@ -131,6 +135,7 @@ class PSpace(Basic):
 
     See Also
     ========
+
     sympy.stats.crv.ContinuousPSpace
     sympy.stats.frv.FinitePSpace
     """
@@ -278,6 +283,7 @@ class ProductPSpace(PSpace):
 
     See Also
     ========
+
     sympy.stats.rv.IndependentProductPSpace
     sympy.stats.joint_rv.JointPSpace
     """
@@ -357,8 +363,8 @@ class IndependentProductPSpace(ProductPSpace):
         raise NotImplementedError("Density not available for ProductSpaces")
 
     def sample(self):
-        return dict([(k, v) for space in self.spaces
-            for k, v in space.sample().items()])
+        return {k: v for space in self.spaces
+            for k, v in space.sample().items()}
 
     def probability(self, condition, **kwargs):
         cond_inv = False
@@ -439,8 +445,6 @@ class ProductDomain(RandomDomain):
     is_ProductDomain = True
 
     def __new__(cls, *domains):
-        symbols = sumsets([domain.symbols for domain in domains])
-
         # Flatten any product of products
         domains2 = []
         for domain in domains:
@@ -501,9 +505,10 @@ def random_symbols(expr):
     """
     Returns all RandomSymbols within a SymPy Expression.
     """
-    try:
-        return list(expr.atoms(RandomSymbol))
-    except AttributeError:
+    atoms = getattr(expr, 'atoms', None)
+    if atoms is not None:
+        return list(atoms(RandomSymbol))
+    else:
         return []
 
 
@@ -523,7 +528,7 @@ def pspace(expr):
     True
     """
     expr = sympify(expr)
-    if isinstance(expr, RandomSymbol) and expr.pspace != None:
+    if isinstance(expr, RandomSymbol) and expr.pspace is not None:
         return expr.pspace
     rvs = random_symbols(expr)
     if not rvs:
@@ -723,6 +728,17 @@ def probability(condition, given_condition=None, numsamples=None,
 
     condition = sympify(condition)
     given_condition = sympify(given_condition)
+
+    if isinstance(given_condition, RandomSymbol):
+        condrv = random_symbols(condition)
+        if len(condrv) == 1 and condrv[0] == given_condition:
+            from sympy.stats.frv_types import BernoulliDistribution
+            return BernoulliDistribution(probability(condition), 0, 1)
+        if any([dependent(rv, given_condition) for rv in condrv]):
+            from sympy.stats.symbolic_probability import Probability
+            return Probability(condition, given_condition)
+        else:
+            return probability(condition)
 
     if given_condition is not None and \
             not isinstance(given_condition, (Relational, Boolean)):
@@ -967,9 +983,15 @@ def sample_iter(expr, condition=None, numsamples=S.Infinity, **kwargs):
     """
     Returns an iterator of realizations from the expression given a condition
 
-    expr: Random expression to be realized
-    condition: A conditional expression (optional)
-    numsamples: Length of the iterator (defaults to infinity)
+    Parameters
+    ==========
+
+    expr: Expr
+        Random expression to be realized
+    condition: Expr, optional
+        A conditional expression
+    numsamples: integer, optional
+        Length of the iterator (defaults to infinity)
 
     Examples
     ========
@@ -983,11 +1005,13 @@ def sample_iter(expr, condition=None, numsamples=S.Infinity, **kwargs):
 
     See Also
     ========
-    Sample
+
+    sample
     sampling_P
     sampling_E
     sample_iter_lambdify
     sample_iter_subs
+
     """
     # lambdify is much faster but not as robust
     try:
@@ -996,6 +1020,51 @@ def sample_iter(expr, condition=None, numsamples=S.Infinity, **kwargs):
     except TypeError:
         return sample_iter_subs(expr, condition, numsamples, **kwargs)
 
+def quantile(expr, evaluate=True, **kwargs):
+    r"""
+    Return the :math:`p^{th}` order quantile of a probability distribution.
+
+    Quantile is defined as the value at which the probability of the random
+    variable is less than or equal to the given probability.
+
+    ..math::
+        Q(p) = inf{x \in (-\infty, \infty) such that p <= F(x)}
+
+    Examples
+    ========
+
+    >>> from sympy.stats import quantile, Die, Exponential
+    >>> from sympy import Symbol, pprint
+    >>> p = Symbol("p")
+
+    >>> l = Symbol("lambda", positive=True)
+    >>> X = Exponential("x", l)
+    >>> quantile(X)(p)
+    -log(1 - p)/lambda
+
+    >>> D = Die("d", 6)
+    >>> pprint(quantile(D)(p), use_unicode=False)
+    /nan  for Or(p > 1, p < 0)
+    |
+    | 1       for p <= 1/6
+    |
+    | 2       for p <= 1/3
+    |
+    < 3       for p <= 1/2
+    |
+    | 4       for p <= 2/3
+    |
+    | 5       for p <= 5/6
+    |
+    \ 6        for p <= 1
+
+    """
+    result = pspace(expr).compute_quantile(expr, **kwargs)
+
+    if evaluate and hasattr(result, 'doit'):
+        return result.doit()
+    else:
+        return result
 
 def sample_iter_lambdify(expr, condition=None, numsamples=S.Infinity, **kwargs):
     """
@@ -1076,9 +1145,11 @@ def sampling_P(condition, given_condition=None, numsamples=1,
 
     See Also
     ========
+
     P
     sampling_E
     sampling_density
+
     """
 
     count_true = 0
@@ -1087,11 +1158,11 @@ def sampling_P(condition, given_condition=None, numsamples=1,
     samples = sample_iter(condition, given_condition,
                           numsamples=numsamples, **kwargs)
 
-    for x in samples:
-        if x != True and x != False:
+    for sample in samples:
+        if sample != True and sample != False:
             raise ValueError("Conditions must not contain free symbols")
 
-        if x:
+        if sample:
             count_true += 1
         else:
             count_false += 1
@@ -1110,6 +1181,7 @@ def sampling_E(expr, given_condition=None, numsamples=1,
 
     See Also
     ========
+
     P
     sampling_P
     sampling_density
@@ -1166,6 +1238,7 @@ def dependent(a, b):
 
     See Also
     ========
+
     independent
     """
     if pspace_independent(a, b):
@@ -1202,6 +1275,7 @@ def independent(a, b):
 
     See Also
     ========
+
     dependent
     """
     return not dependent(a, b)
@@ -1250,14 +1324,64 @@ class NamedArgsMixin(object):
         try:
             return self.args[self._argnames.index(attr)]
         except ValueError:
-            raise AttributeError("'%s' object has not attribute '%s'" % (
+            raise AttributeError("'%s' object has no attribute '%s'" % (
                 type(self).__name__, attr))
 
 def _value_check(condition, message):
     """
-    Check a condition on input value.
+    Raise a ValueError with message if condition is False, else
+    return True if all conditions were True, else False.
 
-    Raises ValueError with message if condition is not True
+    Examples
+    ========
+
+    >>> from sympy.stats.rv import _value_check
+    >>> from sympy.abc import a, b, c
+    >>> from sympy import And, Dummy
+
+    >>> _value_check(2 < 3, '')
+    True
+
+    Here, the condition is not False, but it doesn't evaluate to True
+    so False is returned (but no error is raised). So checking if the
+    return value is True or False will tell you if all conditions were
+    evaluated.
+
+    >>> _value_check(a < b, '')
+    False
+
+    In this case the condition is False so an error is raised:
+
+    >>> r = Dummy(real=True)
+    >>> _value_check(r < r - 1, 'condition is not true')
+    Traceback (most recent call last):
+    ...
+    ValueError: condition is not true
+
+    If no condition of many conditions must be False, they can be
+    checked by passing them as an iterable:
+
+    >>> _value_check((a < 0, b < 0, c < 0), '')
+    False
+
+    The iterable can be a generator, too:
+
+    >>> _value_check((i < 0 for i in (a, b, c)), '')
+    False
+
+    The following are equivalent to the above but do not pass
+    an iterable:
+
+    >>> all(_value_check(i < 0, '') for i in (a, b, c))
+    False
+    >>> _value_check(And(a < 0, b < 0, c < 0), '')
+    False
     """
-    if condition == False:
+    from sympy.core.compatibility import iterable
+    from sympy.core.logic import fuzzy_and
+    if not iterable(condition):
+        condition = [condition]
+    truth = fuzzy_and(condition)
+    if truth == False:
         raise ValueError(message)
+    return truth == True

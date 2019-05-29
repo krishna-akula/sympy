@@ -1,3 +1,5 @@
+from functools import wraps
+
 from sympy import Matrix, eye, Integer, expand, Indexed, Sum
 from sympy.combinatorics import Permutation
 from sympy.core import S, Rational, Symbol, Basic, Add
@@ -10,17 +12,18 @@ from sympy.tensor.tensor import TensorIndexType, tensor_indices, TensorSymmetry,
     get_symmetric_group_sgs, TensorType, TensorIndex, tensor_mul, TensAdd, \
     riemann_cyclic_replace, riemann_cyclic, TensMul, tensorsymmetry, tensorhead, \
     TensorManager, TensExpr, TensorHead, canon_bp
-from sympy.utilities.pytest import raises, XFAIL
+from sympy.utilities.pytest import raises, XFAIL, ignore_warnings
 from sympy.utilities.exceptions import SymPyDeprecationWarning
 from sympy.core.compatibility import range
 from sympy.matrices import diag
-import warnings
 
 
 def filter_warnings_decorator(f):
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=SymPyDeprecationWarning)
-        f()
+    @wraps(f)
+    def wrapper():
+        with ignore_warnings(SymPyDeprecationWarning):
+            f()
+    return wrapper
 
 def _is_equal(arg1, arg2):
     if isinstance(arg1, TensExpr):
@@ -540,9 +543,8 @@ def test_TensExpr():
     #raises(NotImplementedError, lambda: TensExpr.__rsub__(t, 'a'))
     #raises(NotImplementedError, lambda: TensExpr.__div__(t, 'a'))
     #raises(NotImplementedError, lambda: TensExpr.__rdiv__(t, 'a'))
-    with warnings.catch_warnings():
-        warnings.filterwarnings("ignore", category=SymPyDeprecationWarning)
-        # DO NOT REMOVE THIS AFTER DEFRECATION REMOVED:
+    with ignore_warnings(SymPyDeprecationWarning):
+        # DO NOT REMOVE THIS AFTER DEPRECATION REMOVED:
         raises(ValueError, lambda: A(a, b)**2)
     raises(NotImplementedError, lambda: 2**A(a, b))
     raises(NotImplementedError, lambda: abs(A(a, b)))
@@ -1895,6 +1897,7 @@ def test_tensor_replacement():
     repl = {H(i,-j): [[1,2],[3,4]], L: diag(1, -1)}
     assert expr._extract_data(repl) == ([i, j], Array([[1, -2], [3, -4]]))
 
+    assert expr.replace_with_arrays(repl) == Array([[1, -2], [3, -4]])
     assert expr.replace_with_arrays(repl, [i, j]) == Array([[1, -2], [3, -4]])
     assert expr.replace_with_arrays(repl, [i, -j]) == Array([[1, 2], [3, 4]])
     assert expr.replace_with_arrays(repl, [-i, j]) == Array([[1, -2], [-3, 4]])
@@ -1903,11 +1906,14 @@ def test_tensor_replacement():
     assert expr.replace_with_arrays(repl, [j, -i]) == Array([[1, -3], [-2, 4]])
     assert expr.replace_with_arrays(repl, [-j, i]) == Array([[1, 3], [2, 4]])
     assert expr.replace_with_arrays(repl, [-j, -i]) == Array([[1, -3], [2, -4]])
+    # Test stability of optional parameter 'indices'
+    assert expr.replace_with_arrays(repl) == Array([[1, -2], [3, -4]])
 
     expr = H(i,j)
     repl = {H(i,j): [[1,2],[3,4]], L: diag(1, -1)}
     assert expr._extract_data(repl) == ([i, j], Array([[1, 2], [3, 4]]))
 
+    assert expr.replace_with_arrays(repl) == Array([[1, 2], [3, 4]])
     assert expr.replace_with_arrays(repl, [i, j]) == Array([[1, 2], [3, 4]])
     assert expr.replace_with_arrays(repl, [i, -j]) == Array([[1, -2], [3, -4]])
     assert expr.replace_with_arrays(repl, [-i, j]) == Array([[1, 2], [-3, -4]])

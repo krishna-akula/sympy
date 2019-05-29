@@ -6,11 +6,11 @@ from __future__ import print_function, division
 
 from sympy.core import S, Rational, Pow, Basic, Mul
 from sympy.core.mul import _keep_coeff
+from sympy.core.compatibility import string_types
 from .printer import Printer
 from sympy.printing.precedence import precedence, PRECEDENCE
 
-import mpmath.libmp as mlib
-from mpmath.libmp import prec_to_dps
+from mpmath.libmp import prec_to_dps, to_str as mlib_to_str
 
 from sympy.utilities import default_sort_key
 
@@ -36,13 +36,10 @@ class StrPrinter(Printer):
         return sep.join([self.parenthesize(item, level) for item in args])
 
     def emptyPrinter(self, expr):
-        if isinstance(expr, str):
+        if isinstance(expr, string_types):
             return expr
         elif isinstance(expr, Basic):
-            if hasattr(expr, "args"):
-                return repr(expr)
-            else:
-                raise
+            return repr(expr)
         else:
             return str(expr)
 
@@ -209,7 +206,7 @@ class StrPrinter(Printer):
                                         self._print(i.max))
 
     def _print_Inverse(self, I):
-        return "%s^-1" % self.parenthesize(I.arg, PRECEDENCE["Pow"])
+        return "%s**(-1)" % self.parenthesize(I.arg, PRECEDENCE["Pow"])
 
     def _print_Lambda(self, obj):
         args, expr = obj.args
@@ -236,8 +233,7 @@ class StrPrinter(Printer):
 
     def _print_MatrixBase(self, expr):
         return expr._format_str(self)
-    _print_SparseMatrix = \
-        _print_MutableSparseMatrix = \
+    _print_MutableSparseMatrix = \
         _print_ImmutableSparseMatrix = \
         _print_Matrix = \
         _print_DenseMatrix = \
@@ -316,7 +312,7 @@ class StrPrinter(Printer):
             if item.base in b:
                 b_str[b.index(item.base)] = "(%s)" % b_str[b.index(item.base)]
 
-        if len(b) == 0:
+        if not b:
             return sign + '*'.join(a_str)
         elif len(b) == 1:
             return sign + '*'.join(a_str) + "/" + b_str[0]
@@ -339,17 +335,27 @@ class StrPrinter(Printer):
         return '.*'.join([self.parenthesize(arg, precedence(expr))
             for arg in expr.args])
 
+    def _print_HadamardPower(self, expr):
+        PREC = precedence(expr)
+        return '.**'.join([
+            self.parenthesize(expr.base, PREC),
+            self.parenthesize(expr.exp, PREC)
+        ])
+
+    def _print_ElementwiseApplyFunction(self, expr):
+        return "{0}({1}...)".format(
+            expr.function,
+            self._print(expr.expr),
+        )
+
     def _print_NaN(self, expr):
         return 'nan'
 
     def _print_NegativeInfinity(self, expr):
         return '-oo'
 
-    def _print_Normal(self, expr):
-        return "Normal(%s, %s)" % (self._print(expr.mu), self._print(expr.sigma))
-
     def _print_Order(self, expr):
-        if all(p is S.Zero for p in expr.point) or not len(expr.variables):
+        if not expr.variables or all(p is S.Zero for p in expr.point):
             if len(expr.variables) <= 1:
                 return 'O(%s)' % self._print(expr.expr)
             else:
@@ -418,11 +424,6 @@ class StrPrinter(Printer):
     def _print_PermutationGroup(self, expr):
         p = ['    %s' % self._print(a) for a in expr.args]
         return 'PermutationGroup([\n%s])' % ',\n'.join(p)
-
-    def _print_PDF(self, expr):
-        return 'PDF(%s, (%s, %s, %s))' % \
-            (self._print(expr.pdf.args[1]), self._print(expr.pdf.args[0]),
-            self._print(expr.domain[0]), self._print(expr.domain[1]))
 
     def _print_Pi(self, expr):
         return 'pi'
@@ -519,6 +520,9 @@ class StrPrinter(Printer):
 
     def _print_ProductSet(self, p):
         return ' x '.join(self._print(set) for set in p.sets)
+
+    def _print_UniversalSet(self, p):
+        return 'UniversalSet'
 
     def _print_AlgebraicNumber(self, expr):
         if expr.is_aliased:
@@ -625,7 +629,7 @@ class StrPrinter(Printer):
             strip = True
         elif self._settings["full_prec"] == "auto":
             strip = self._print_level > 1
-        rv = mlib.to_str(expr._mpf_, dps, strip_zeros=strip)
+        rv = mlib_to_str(expr._mpf_, dps, strip_zeros=strip)
         if rv.startswith('-.0'):
             rv = '-0.' + rv[3:]
         elif rv.startswith('.0'):
@@ -682,9 +686,6 @@ class StrPrinter(Printer):
 
         return "%s(%s)" % (cls, ", ".join(args))
 
-    def _print_Sample(self, expr):
-        return "Sample([%s])" % self.stringify(expr, ", ", 0)
-
     def _print_set(self, s):
         items = sorted(s, key=default_sort_key)
 
@@ -721,6 +722,9 @@ class StrPrinter(Printer):
 
     def _print_ZeroMatrix(self, expr):
         return "0"
+
+    def _print_OneMatrix(self, expr):
+        return "1"
 
     def _print_Predicate(self, expr):
         return "Q.%s" % expr.name

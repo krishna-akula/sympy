@@ -6,9 +6,8 @@ This module contains python code printers for plain python as well as NumPy & Sc
 
 
 from collections import defaultdict
-from functools import wraps
 from itertools import chain
-from sympy.core import sympify, S
+from sympy.core import S
 from .precedence import precedence
 from .codeprinter import CodePrinter
 
@@ -106,9 +105,6 @@ class AbstractPythonCodePrinter(CodePrinter):
         self.known_constants = dict(self._kc, **(settings or {}).get(
             'user_constants', {}))
 
-    def _get_statement(self, codestring):
-        return codestring
-
     def _declare_number_const(self, name, value):
         return "%s = %s" % (name, value)
 
@@ -126,7 +122,7 @@ class AbstractPythonCodePrinter(CodePrinter):
         return lines
 
     def _get_statement(self, codestring):
-        return "%s" % codestring
+        return "{}".format(codestring)
 
     def _get_comment(self, text):
         return "  # {0}".format(text)
@@ -332,10 +328,10 @@ class AbstractPythonCodePrinter(CodePrinter):
 
     def _print_Print(self, prnt):
         print_args = ', '.join(map(lambda arg: self._print(arg), prnt.print_args))
-        if prnt.format_string != None:
+        if prnt.format_string != None: # Must be '!= None', cannot be 'is not None'
             print_args = '{0} % ({1})'.format(
                 self._print(prnt.format_string), print_args)
-        if prnt.file != None:
+        if prnt.file != None: # Must be '!= None', cannot be 'is not None'
             print_args += ', file=%s' % self._print(prnt.file)
         return 'print(%s)' % print_args
 
@@ -360,6 +356,11 @@ class PythonCodePrinter(AbstractPythonCodePrinter):
     def _print_Not(self, expr):
         PREC = precedence(expr)
         return self._operators['not'] + self.parenthesize(expr.args[0], PREC)
+
+    def _print_Indexed(self, expr):
+        base = expr.args[0]
+        index = expr.args[1:]
+        return "{}[{}]".format(str(base), ", ".join([self._print(ind) for ind in index]))
 
 
 for k in PythonCodePrinter._kf:
@@ -492,12 +493,25 @@ class NumPyPrinter(PythonCodePrinter):
         "General sequence printer: converts to tuple"
         # Print tuples here instead of lists because numba supports
         #     tuples in nopython mode.
-        delimite.get('delimiter', ', ')
+        delimiter=', '
         return '({},)'.format(delimiter.join(self._print(item) for item in seq))
 
     def _print_MatMul(self, expr):
         "Matrix multiplication printer"
+        if expr.as_coeff_matrices()[0] is not S(1):
+            expr_list = expr.as_coeff_matrices()[1]+[(expr.as_coeff_matrices()[0])]
+            return '({0})'.format(').dot('.join(self._print(i) for i in expr_list))
         return '({0})'.format(').dot('.join(self._print(i) for i in expr.args))
+
+    def _print_MatPow(self, expr):
+        "Matrix power printer"
+        return '{0}({1}, {2})'.format(self._module_format('numpy.linalg.matrix_power'),
+            self._print(expr.args[0]), self._print(expr.args[1]))
+
+    def _print_Inverse(self, expr):
+        "Matrix inverse printer"
+        return '{0}({1})'.format(self._module_format('numpy.linalg.inv'),
+            self._print(expr.args[0]))
 
     def _print_DotProduct(self, expr):
         # DotProduct allows any shape order, but numpy.dot does matrix
@@ -594,6 +608,10 @@ class NumPyPrinter(PythonCodePrinter):
             func = self._module_format('numpy.array')
         return "%s(%s)" % (func, self._print(expr.tolist()))
 
+    def _print_BlockMatrix(self, expr):
+        return '{0}({1})'.format(self._module_format('numpy.block'),
+                                 self._print(expr.args[0].tolist()))
+
     def _print_CodegenArrayTensorProduct(self, expr):
         array_list = [j for i, arg in enumerate(expr.args) for j in
                 (self._print(arg), "[%i, %i]" % (2*i, 2*i+1))]
@@ -603,7 +621,7 @@ class NumPyPrinter(PythonCodePrinter):
         from sympy.codegen.array_utils import CodegenArrayTensorProduct
         base = expr.expr
         contraction_indices = expr.contraction_indices
-        if len(contraction_indices) == 0:
+        if not contraction_indices:
             return self._print(base)
         if isinstance(base, CodegenArrayTensorProduct):
             counter = 0
@@ -663,16 +681,25 @@ for k in NumPyPrinter._kc:
 _known_functions_scipy_special = {
     'erf': 'erf',
     'erfc': 'erfc',
-    'besselj': 'jn',
-    'bessely': 'yn',
+    'besselj': 'jv',
+    'bessely': 'yv',
     'besseli': 'iv',
-    'besselk': 'kn',
+    'besselk': 'kv',
     'factorial': 'factorial',
     'gamma': 'gamma',
     'loggamma': 'gammaln',
     'digamma': 'psi',
-    'RisingFactorial': 'poch'
+    'RisingFactorial': 'poch',
+    'jacobi': 'eval_jacobi',
+    'gegenbauer': 'eval_gegenbauer',
+    'chebyshevt': 'eval_chebyt',
+    'chebyshevu': 'eval_chebyu',
+    'legendre': 'eval_legendre',
+    'hermite': 'eval_hermite',
+    'laguerre': 'eval_laguerre',
+    'assoc_laguerre': 'eval_genlaguerre',
 }
+
 _known_constants_scipy_constants = {
     'GoldenRatio': 'golden_ratio',
     'Pi': 'pi',
@@ -701,6 +728,13 @@ class SciPyPrinter(NumPyPrinter):
 
     _print_ImmutableSparseMatrix = _print_SparseMatrix
 
+    # SciPy's lpmv has a different order of arguments from assoc_legendre
+    def _print_assoc_legendre(self, expr):
+        return "{0}({2}, {1}, {3})".format(
+            self._module_format('scipy.special.lpmv'),
+            self._print(expr.args[0]),
+            self._print(expr.args[1]),
+            self._print(expr.args[2]))
 
 for k in SciPyPrinter._kf:
     setattr(SciPyPrinter, '_print_%s' % k, _print_known_func)
@@ -711,10 +745,10 @@ for k in SciPyPrinter._kc:
 
 class SymPyPrinter(PythonCodePrinter):
 
-    _kf = dict([(k, 'sympy.' + v) for k, v in chain(
+    _kf = {k: 'sympy.' + v for k, v in chain(
         _known_functions.items(),
         _known_functions_math.items()
-    )])
+    )}
 
     def _print_Function(self, expr):
         mod = expr.func.__module__ or ''

@@ -1,10 +1,10 @@
 from __future__ import print_function, division
 
 from sympy.core import Add, S, sympify, oo, pi, Dummy, expand_func
+from sympy.core.compatibility import range, as_int
 from sympy.core.function import Function, ArgumentIndexError
 from sympy.core.numbers import Rational
 from sympy.core.power import Pow
-from sympy.core.compatibility import range
 from .zeta_functions import zeta
 from .error_functions import erf, erfc
 from sympy.functions.elementary.exponential import exp, log
@@ -14,6 +14,12 @@ from sympy.functions.elementary.trigonometric import sin, cos, cot
 from sympy.functions.combinatorial.numbers import bernoulli, harmonic
 from sympy.functions.combinatorial.factorials import factorial, rf, RisingFactorial
 
+def intlike(n):
+    try:
+        as_int(n, strict=False)
+        return True
+    except ValueError:
+        return False
 
 ###############################################################################
 ############################ COMPLETE GAMMA FUNCTION ##########################
@@ -107,7 +113,7 @@ class gamma(Function):
                 return S.NaN
             elif arg is S.Infinity:
                 return S.Infinity
-            elif arg.is_Integer:
+            elif intlike(arg):
                 if arg.is_positive:
                     return factorial(arg - 1)
                 else:
@@ -181,6 +187,10 @@ class gamma(Function):
             return super(gamma, self)._eval_nseries(x, n, logx)
         t = self.args[0] - x0
         return (self.func(t + 1)/rf(self.args[0], -x0 + 1))._eval_nseries(x, n, logx)
+
+    def _sage_(self):
+        import sage.all as sage
+        return sage.gamma(self.args[0]._sage_())
 
 
 ###############################################################################
@@ -464,6 +474,10 @@ class uppergamma(Function):
         from sympy import expint
         return expint(1 - s, x)*x**s
 
+    def _sage_(self):
+        import sage.all as sage
+        return sage.gamma(self.args[0]._sage_(), self.args[1]._sage_())
+
 
 ###############################################################################
 ###################### POLYGAMMA and LOGGAMMA FUNCTIONS #######################
@@ -494,9 +508,9 @@ class polygamma(Function):
     >>> polygamma(0, 1/S(4))
     -pi/2 - log(4) - log(2) - EulerGamma
     >>> polygamma(0, 2)
-    -EulerGamma + 1
+    1 - EulerGamma
     >>> polygamma(0, 23)
-    -EulerGamma + 19093197/5173168
+    19093197/5173168 - EulerGamma
 
     >>> from sympy import oo, I
     >>> polygamma(0, oo)
@@ -783,7 +797,7 @@ class loggamma(Function):
     >>> loggamma(S(5)/2)
     log(3*sqrt(pi)/4)
     >>> loggamma(n/2)
-    log(2**(-n + 1)*sqrt(pi)*gamma(n)/gamma(n/2 + 1/2))
+    log(2**(1 - n)*sqrt(pi)*gamma(n)/gamma(n/2 + 1/2))
 
     and general rational arguments:
 

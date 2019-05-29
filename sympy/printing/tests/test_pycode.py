@@ -2,20 +2,20 @@
 from __future__ import absolute_import
 
 from sympy.codegen import Assignment
+from sympy.codegen.ast import none
 from sympy.core import Expr, Mod, symbols, Eq, Le, Gt, zoo, oo, Rational
 from sympy.core.numbers import pi
-from sympy.codegen.ast import none
-from sympy.external import import_module
-from sympy.logic import And, Or
 from sympy.functions import acos, Piecewise, sign
-from sympy.matrices import SparseMatrix
+from sympy.logic import And, Or
+from sympy.matrices import SparseMatrix, MatrixSymbol
 from sympy.printing.pycode import (
     MpmathPrinter, NumPyPrinter, PythonCodePrinter, pycode, SciPyPrinter
 )
 from sympy.utilities.pytest import raises
+from sympy.tensor import IndexedBase
 
 x, y, z = symbols('x y z')
-
+p = IndexedBase("p")
 
 def test_PythonCodePrinter():
     prntr = PythonCodePrinter()
@@ -35,6 +35,7 @@ def test_PythonCodePrinter():
                         (3, Gt(x, 0)), evaluate=False)) == '((2) if (x <= 0) else'\
                                                         ' (3) if (x > 0) else None)'
     assert prntr.doprint(sign(x)) == '(0.0 if x == 0 else math.copysign(1, x))'
+    assert prntr.doprint(p[0, 1]) == 'p[0, 1]'
 
 
 def test_MpmathPrinter():
@@ -45,6 +46,9 @@ def test_MpmathPrinter():
 def test_NumPyPrinter():
     p = NumPyPrinter()
     assert p.doprint(sign(x)) == 'numpy.sign(x)'
+    A = MatrixSymbol("A", 2, 2)
+    assert p.doprint(A**(-1)) == "numpy.linalg.inv(A)"
+    assert p.doprint(A**5) == "numpy.linalg.matrix_power(A, 5)"
 
 
 def test_SciPyPrinter():
@@ -89,3 +93,8 @@ def test_issue_14283():
 
     assert prntr.doprint(zoo) == "float('nan')"
     assert prntr.doprint(-oo) == "float('-inf')"
+
+def test_NumPyPrinter_print_seq():
+    n = NumPyPrinter()
+
+    assert n._print_seq(range(2)) == '(0, 1,)'

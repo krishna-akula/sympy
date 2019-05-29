@@ -2,7 +2,7 @@ from sympy import (
     symbols, log, ln, Float, nan, oo, zoo, I, pi, E, exp, Symbol,
     LambertW, sqrt, Rational, expand_log, S, sign, conjugate, refine,
     sin, cos, sinh, cosh, tanh, exp_polar, re, Function, simplify,
-    AccumBounds, MatrixSymbol)
+    AccumBounds, MatrixSymbol, Pow)
 from sympy.abc import x, y, z
 
 
@@ -117,6 +117,9 @@ def test_exp_rewrite():
     assert exp(x).rewrite(tanh) == (1 + tanh(x/2))/(1 - tanh(x/2))
     assert exp(pi*I/4).rewrite(sqrt) == sqrt(2)/2 + sqrt(2)*I/2
     assert exp(pi*I/3).rewrite(sqrt) == S(1)/2 + sqrt(3)*I/2
+    assert exp(x*log(y)).rewrite(Pow) == y**x
+    assert exp(log(x)*log(y)).rewrite(Pow) in [x**log(y), y**log(x)]
+    assert exp(log(log(x))*y).rewrite(Pow) == log(x)**y
 
     n = Symbol('n', integer=True)
 
@@ -247,7 +250,7 @@ def test_exp_assumptions():
         assert e(i).is_imaginary is None
         assert e(r).is_real is True
         assert e(r).is_imaginary is False
-        assert e(re(x)).is_real is True
+        assert e(re(x)).is_extended_real is True
         assert e(re(x)).is_imaginary is False
 
     assert exp(0, evaluate=False).is_algebraic
@@ -270,10 +273,10 @@ def test_log_assumptions():
     p = symbols('p', positive=True)
     n = symbols('n', negative=True)
     z = symbols('z', zero=True)
-    x = symbols('x', infinite=True, positive=True)
+    x = symbols('x', infinite=True, extended_positive=True)
 
     assert log(z).is_positive is False
-    assert log(x).is_positive is True
+    assert log(x).is_extended_positive is True
     assert log(2) > 0
     assert log(1, evaluate=False).is_zero
     assert log(1 + z).is_zero

@@ -13,7 +13,7 @@ from sympy.functions.special.error_functions import _erfs, _eis
 
 from sympy.core.function import ArgumentIndexError
 
-from sympy.utilities.pytest import raises
+from sympy.utilities.pytest import raises, slow
 
 x, y, z = symbols('x,y,z')
 w = Symbol("w", real=True)
@@ -563,6 +563,7 @@ def test_ci():
     assert limit(log(x) - Ci(2*x), x, 0) == -log(2) - EulerGamma
 
 
+@slow
 def test_fresnel():
     assert fresnels(0) == 0
     assert fresnels(oo) == S.Half
@@ -586,7 +587,7 @@ def test_fresnel():
     assert fresnels(z).series(z, n=15) == \
         pi*z**3/6 - pi**3*z**7/336 + pi**5*z**11/42240 + O(z**15)
 
-    assert fresnels(w).is_real is True
+    assert fresnels(w).is_extended_real is True
 
     assert fresnels(z).as_real_imag() == \
         ((fresnels(re(z) - I*re(z)*Abs(im(z))/Abs(re(z)))/2 +
@@ -643,7 +644,7 @@ def test_fresnel():
     assert ((2*fresnels(3*z)).series(z, oo) - 2*fs.subs(z, 3*z)).expand().is_Order
     assert ((3*fresnelc(2*z)).series(z, oo) - 3*fc.subs(z, 2*z)).expand().is_Order
 
-    assert fresnelc(w).is_real is True
+    assert fresnelc(w).is_extended_real is True
 
     assert fresnelc(z).as_real_imag() == \
         ((fresnelc(re(z) - I*re(z)*Abs(im(z))/Abs(re(z)))/2 +

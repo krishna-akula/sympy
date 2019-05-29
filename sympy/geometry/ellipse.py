@@ -10,12 +10,13 @@ from __future__ import division, print_function
 
 from sympy import Expr, Eq
 from sympy.core import S, pi, sympify
+from sympy.core.evaluate import global_evaluate
 from sympy.core.logic import fuzzy_bool
 from sympy.core.numbers import Rational, oo
 from sympy.core.compatibility import ordered
 from sympy.core.symbol import Dummy, _uniquely_named_symbol, _symbol
 from sympy.simplify import simplify, trigsimp
-from sympy.functions.elementary.miscellaneous import sqrt
+from sympy.functions.elementary.miscellaneous import sqrt, Max
 from sympy.functions.elementary.trigonometric import cos, sin
 from sympy.functions.special.elliptic_integrals import elliptic_e
 from sympy.geometry.exceptions import GeometryError
@@ -28,7 +29,7 @@ from sympy.utilities.misc import filldedent, func_name
 
 from .entity import GeometryEntity, GeometrySet
 from .point import Point, Point2D, Point3D
-from .line import Line, LinearEntity, Segment
+from .line import Line, Segment
 from .util import idiff
 
 import random
@@ -737,7 +738,13 @@ class Ellipse(GeometrySet):
             else:
                 return False
         elif isinstance(o, Line2D):
-            return len(self.intersection(o)) == 1
+            hit = self.intersection(o)
+            if not hit:
+                return False
+            if len(hit) == 1:
+                return True
+            # might return None if it can't decide
+            return hit[0].equals(hit[1])
         elif isinstance(o, Ray2D):
             intersect = self.intersection(o)
             if len(intersect) == 1:
@@ -962,7 +969,7 @@ class Ellipse(GeometrySet):
         >>> p1 = Point(0, 0)
         >>> e1 = Ellipse(p1, 3, 1)
         >>> e1.periapsis
-        -2*sqrt(2) + 3
+        3 - 2*sqrt(2)
 
         """
         return self.major * (1 - self.eccentricity)
@@ -1004,6 +1011,52 @@ class Ellipse(GeometrySet):
 
         """
         return self.major * (1 - self.eccentricity ** 2)
+
+    def auxiliary_circle(self):
+        """Returns a Circle whose diameter is the major axis of the ellipse.
+
+        Examples
+        ========
+
+        >>> from sympy import Circle, Ellipse, Point, symbols
+        >>> c = Point(1, 2)
+        >>> Ellipse(c, 8, 7).auxiliary_circle()
+        Circle(Point2D(1, 2), 8)
+        >>> a, b = symbols('a b')
+        >>> Ellipse(c, a, b).auxiliary_circle()
+        Circle(Point2D(1, 2), Max(a, b))
+        """
+        return Circle(self.center, Max(self.hradius, self.vradius))
+
+    def director_circle(self):
+        """
+        Returns a Circle consisting of all points where two perpendicular
+        tangent lines to the ellipse cross each other.
+
+        Returns
+        =======
+
+        Circle
+            A director circle returned as a geometric object.
+
+        Examples
+        ========
+
+        >>> from sympy import Circle, Ellipse, Point, symbols
+        >>> c = Point(3,8)
+        >>> Ellipse(c, 7, 9).director_circle()
+        Circle(Point2D(3, 8), sqrt(130))
+        >>> a, b = symbols('a b')
+        >>> Ellipse(c, a, b).director_circle()
+        Circle(Point2D(3, 8), sqrt(a**2 + b**2))
+
+        References
+        ==========
+
+        .. [1] https://en.wikipedia.org/wiki/Director_circle
+
+        """
+        return Circle(self.center, sqrt(self.hradius**2 + self.vradius**2))
 
     def plot_interval(self, parameter='t'):
         """The plot interval for the default geometric plot of the Ellipse.
@@ -1400,7 +1453,7 @@ class Circle(Ellipse):
     def __new__(cls, *args, **kwargs):
         from sympy.geometry.util import find
         from .polygon import Triangle
-
+        evaluate = kwargs.get('evaluate', global_evaluate[0])
         if len(args) == 1 and isinstance(args[0], Expr):
             x = kwargs.get('x', 'x')
             y = kwargs.get('y', 'y')
@@ -1422,12 +1475,12 @@ class Circle(Ellipse):
             center_y = -d/b/2
             r2 = (center_x**2) + (center_y**2) - e
 
-            return Circle((center_x, center_y), sqrt(r2))
+            return Circle((center_x, center_y), sqrt(r2), evaluate=evaluate)
 
         else:
             c, r = None, None
             if len(args) == 3:
-                args = [Point(a, dim=2) for a in args]
+                args = [Point(a, dim=2, evaluate=evaluate) for a in args]
                 t = Triangle(*args)
                 if not isinstance(t, Triangle):
                     return t
@@ -1435,8 +1488,13 @@ class Circle(Ellipse):
                 r = t.circumradius
             elif len(args) == 2:
                 # Assume (center, radius) pair
-                c = Point(args[0], dim=2)
-                r = sympify(args[1])
+                c = Point(args[0], dim=2, evaluate=evaluate)
+                r = args[1]
+                # this will prohibit imaginary radius
+                try:
+                    r = Point(r, 0, evaluate=evaluate).x
+                except:
+                    raise GeometryError("Circle with imaginary radius is not permitted")
 
             if not (c is None or r is None):
                 if r == 0:
